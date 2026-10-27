@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Smart Student Budgeting{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<section class="ss-hero">
+  <div class="container">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-6 text-center text-lg-start">
+        <span class="ss-hero-badge mb-4">
+          <i class="bi bi-mortarboard-fill"></i>Built for university students
+        </span>
+
+        <h1 class="ss-hero-title mb-3">
+          Take control of your student budget with <span class="ss-gradient-text">SaveSip</span>
+        </h1>
+
+        <p class="ss-tagline ss-gradient-text mb-4">Sip smarter. Save faster.</p>
+
+        <p class="lead text-muted mb-4">
+          Track what you earn and spend, set monthly budgets, and see how social media
+          shapes your shopping, with tips based on your own spending.
+        </p>
+
+        <div class="d-flex flex-column flex-sm-row gap-3 justify-content-center justify-content-lg-start">
+          <a href="{{ url_for('register') }}" class="btn btn-success btn-lg px-4">
+            <i class="bi bi-rocket-takeoff me-2"></i>Get Started Free
+          </a>
+          <a href="{{ url_for('login') }}" class="btn btn-outline-success btn-lg px-4">
+            <i class="bi bi-box-arrow-in-right me-2"></i>Log In
+          </a>
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="ss-hero-art">
+          <img src="{{ url_for('static', filename='images/Logo.png') }}" class="ss-hero-logo"
+               alt="SaveSip logo: a student relaxing with a coffee while coins float up">
+          <div class="ss-chip ss-chip-1" aria-hidden="true">
+            <i class="bi bi-hand-thumbs-up-fill ss-icon-teal"></i>Great job on essentials
+          </div>
+          <div class="ss-chip ss-chip-2" aria-hidden="true">
+            <i class="bi bi-piggy-bank-fill ss-icon-orange"></i>Budget 80% used
+          </div>
+          <div class="ss-chip ss-chip-3" aria-hidden="true">
+            <i class="bi bi-tiktok ss-icon-pink"></i>Impulse buy spotted
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="container">
+
+  <!-- Feature cards -->
+  <section class="py-5">
+    <div class="text-center mb-5">
+      <span class="ss-eyebrow">Features</span>
+      <h2 class="fw-bold mb-0">Everything you need to spend smarter</h2>
+    </div>
+
+    {% set features = [
+      ("wallet2", "violet", "Income vs. Spending", "PTPTN, scholarships, part-time jobs and more."),
+      ("phone-vibrate", "pink", "Social Media Impulse Buys", "See what TikTok, Instagram and Shopee Live cost you."),
+      ("check2-circle", "teal", "Needs vs. Wants", "Essentials tracked apart from impulse spending."),
+      ("piggy-bank", "orange", "Budget Alerts", "A heads-up at 80% and when you overspend."),
+      ("bar-chart-line", "blue", "Visual Reports", "Colourful charts you can download as PDF."),
+      ("lightbulb", "mint", "Personalised Tips", "Suggestions based only on your own spending."),
+    ] %}
+    <div class="row g-4">
+      {% for icon, color, title, text in features %}
+        <div class="col-sm-6 col-lg-4">
+          <div class="ss-feature-card">
+            <div class="ss-feature-icon ss-icon-{{ color }}"><i class="bi bi-{{ icon }}"></i></div>
+            <h3 class="h5 fw-semibold mb-2">{{ title }}</h3>
+            <p class="text-muted mb-0">{{ text }}</p>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="py-4">
+    <div class="ss-cta-panel p-4 p-lg-5">
+      <h2 class="h3 fw-bold text-center mb-5">How it works</h2>
+      {% set steps = [
+        ("1", "Create an account", "Sign up in under a minute. Your password is protected with bcrypt."),
+        ("2", "Log your money", "Add income and expenses, and mark which ones are essential."),
+        ("3", "Get insights", "See your reports and personalised suggestions to build better habits."),
+      ] %}
+      <div class="row g-4 text-center">
+        {% for number, title, text in steps %}
+          <div class="col-md-4">
+            <div class="ss-step-number ss-step-number-light">{{ number }}</div>
+            <h3 class="h5 fw-semibold text-white">{{ title }}</h3>
+            <p class="mb-0 text-white opacity-75">{{ text }}</p>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="text-center mt-5">
+        <a href="{{ url_for('register') }}" class="btn btn-light btn-lg px-4 fw-semibold text-primary">
+          Create your free account<i class="bi bi-arrow-right ms-2"></i>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Closing quote -->
+  <section class="pt-5">
+    <figure class="ss-quote mb-0">
+      <span class="ss-quote-icon"><i class="bi bi-cup-hot"></i></span>
+      <blockquote class="mb-0">
+        <p class="mb-0">&ldquo;Take a deep breath. Budgeting is just another ritual, like your morning coffee.&rdquo;</p>
+      </blockquote>
+    </figure>
+  </section>
+
+</div>
+{% endblock %}

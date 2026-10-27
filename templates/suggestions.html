@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% from "_macros.html" import expense_badges %}
+
+{% block title %}Suggestions{% endblock %}
+
+{% block content %}
+{% set styles = {
+  "positive": {"icon": "hand-thumbs-up", "label": "Well done"},
+  "warning": {"icon": "exclamation-triangle", "label": "Heads up"},
+  "info": {"icon": "info-circle", "label": "Good to know"},
+  "context": {"icon": "chat-quote", "label": "Your context"},
+  "reminder": {"icon": "calendar-event", "label": "Reminder"},
+} %}
+{% set hidden_tips = [] %}
+{% if not current_user.notify_social %}{% set _ = hidden_tips.append("social media warnings") %}{% endif %}
+{% if not current_user.notify_budget %}{% set _ = hidden_tips.append("budget alerts") %}{% endif %}
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-2 mb-4">
+    <div>
+      <span class="ss-eyebrow mb-1">Personalised for you</span>
+      <h1 class="h3 fw-bold mb-1">Suggestions</h1>
+      <p class="text-muted mb-0">Tips based on your own spending and notes in {{ month_name }} {{ year }}.</p>
+    </div>
+  </div>
+
+  {% if expense_count == 0 %}
+    <!-- Empty state -->
+    <div class="card border-0 shadow-sm">
+      <div class="card-body text-center py-5">
+        <div class="ss-tip-icon ss-tip-context mx-auto mb-3"><i class="bi bi-journal-plus"></i></div>
+        <h2 class="h5 fw-bold">No expenses logged this month yet</h2>
+        <p class="text-muted">Add your expenses, with a short note when there's a reason, and SaveSip will tailor tips to you.</p>
+        <a href="{{ url_for('add_expense') }}" class="btn btn-success">
+          <i class="bi bi-dash-circle me-1"></i>Add an Expense
+        </a>
+      </div>
+    </div>
+  {% else %}
+
+    <!-- Summary -->
+    {% set stats = [
+      ("receipt", "Expenses", expense_count ~ ""),
+      ("wallet2", "Spent", total_spent|rm),
+      ("phone-vibrate", "Impulse buys", impulse_total|rm),
+      ("chat-quote", "Notes read", context_notes|length ~ ""),
+    ] %}
+    <div class="row g-3 mb-4">
+      {% for icon, label, value in stats %}
+        <div class="col-6 col-lg-3">
+          <div class="ss-stat-card">
+            <span class="ss-stat-icon"><i class="bi bi-{{ icon }}"></i></span>
+            <div>
+              <div class="ss-stat-label">{{ label }}</div>
+              <div class="ss-stat-value{{ ' text-danger' if label == 'Impulse buys' and impulse_total else '' }}">{{ value }}</div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="row g-4">
+
+      <!-- Suggestion cards -->
+      <div class="col-xl-8">
+        {% for suggestion in suggestions %}
+          {% set style = styles.get(suggestion.level, styles.info) %}
+          <article class="ss-tip ss-tip-{{ suggestion.level }}">
+            <div class="ss-tip-icon ss-tip-{{ suggestion.level }}" aria-hidden="true">
+              <i class="bi bi-{{ style.icon }}"></i>
+            </div>
+            <div class="flex-grow-1 min-w-0">
+              <span class="ss-tip-chip">{{ style.label }}</span>
+              <h2 class="ss-tip-title">{{ suggestion.title }}</h2>
+              <p class="ss-tip-message">{{ suggestion.message }}</p>
+
+              {% if suggestion.url %}
+                <a href="{{ suggestion.url }}" class="ss-tip-link">Open <i class="bi bi-arrow-right"></i></a>
+              {% endif %}
+
+              {% if suggestion.expenses and suggestion.level != "context" %}
+                <details class="ss-tip-details">
+                  <summary>
+                    Show {{ suggestion.expenses|length }} related purchase{{ "s" if suggestion.expenses|length != 1 }}
+                  </summary>
+                  <ul class="list-unstyled mb-0">
+                    {% for expense in suggestion.expenses %}
+                      <li>
+                        <span>
+                          {{ expense.date.strftime("%d %b") }} &middot; {{ expense.category }}
+                          {% if expense.description %}&middot; <em>{{ expense.description }}</em>{% endif %}
+                        </span>
+                        <span class="fw-semibold text-nowrap">{{ expense.amount|rm }}</span>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                </details>
+              {% endif %}
+            </div>
+          </article>
+        {% else %}
+          <div class="ss-tip">
+            <div class="ss-tip-icon ss-tip-positive" aria-hidden="true"><i class="bi bi-check2-circle"></i></div>
+            <div>
+              <h2 class="ss-tip-title">Nothing to flag right now</h2>
+              <p class="ss-tip-message">Keep logging your spending and new tips will appear here.</p>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <!-- Spending context: the notes SaveSip read -->
+      <div class="col-xl-4">
+        <aside class="ss-context-panel">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-chat-quote text-primary"></i>
+            <h2 class="h6 fw-bold mb-0">Spending Context</h2>
+          </div>
+          <p class="small text-muted mb-3">
+            Notes from your wants and social-media purchases, and how SaveSip treated them.
+          </p>
+
+          {% for note in context_notes %}
+            {% set expense = note.expense %}
+            <div class="ss-note">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="small">
+                  <span class="fw-semibold">{{ expense.category }}</span>
+                  <span class="text-muted">&middot; {{ expense.date.strftime("%d %b") }}</span>
+                </div>
+                <span class="fw-bold small text-nowrap">{{ expense.amount|rm }}</span>
+              </div>
+              <div class="mt-1">{{ expense_badges(expense) }}</div>
+              <blockquote class="ss-note-quote">&ldquo;{{ expense.description }}&rdquo;</blockquote>
+              <div class="ss-note-verdict {{ 'is-flagged' if note.flagged else 'is-ok' }}">
+                <i class="bi bi-{{ 'exclamation-circle' if note.flagged else 'check-circle' }}"></i>
+                <span><strong>{{ note.label }}</strong> &middot; {{ note.outcome }}</span>
+              </div>
+            </div>
+          {% else %}
+            <div class="ss-note-empty">
+              <i class="bi bi-pencil-square"></i>
+              <p class="mb-0">
+                No notes to read yet. When you log a want, add a short note like
+                <em>&ldquo;gift for mom&rdquo;</em> or <em>&ldquo;study cafe&rdquo;</em> and SaveSip will take it into account.
+              </p>
+            </div>
+          {% endfor %}
+        </aside>
+
+        {% if hidden_tips %}
+          <div class="ss-hidden-tips">
+            <i class="bi bi-bell-slash"></i>
+            <div>
+              You have turned off {{ hidden_tips|join(" and ") }}.
+              <a href="{{ url_for('settings') }}">Change in Settings</a>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

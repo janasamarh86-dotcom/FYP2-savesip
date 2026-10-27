@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_field, expense_type_guide %}
+
+{% block title %}Add Expense{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-10 col-lg-7 col-xl-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-4 p-md-5">
+
+          <div class="d-flex align-items-center mb-4">
+            <div class="rounded-3 bg-danger bg-opacity-10 text-danger fs-3 d-flex align-items-center justify-content-center me-3"
+                 style="width: 3.25rem; height: 3.25rem;">
+              <i class="bi bi-dash-circle"></i>
+            </div>
+            <div>
+              <h1 class="h4 fw-bold mb-0">Add Expense</h1>
+              <p class="text-muted small mb-0">Record something you have spent money on.</p>
+            </div>
+          </div>
+
+          <form method="post" action="{{ url_for('add_expense') }}">
+            {{ form.hidden_tag() }}
+
+            {{ render_field(form.amount, prefix="RM", inputmode="decimal", placeholder="0.00") }}
+
+            <!-- Essential / Want / Unplanned: decides how this expense is treated on the Suggestions page -->
+            {{ render_field(form.expense_type) }}
+            {{ expense_type_guide(form.expense_type) }}
+
+            <div class="row">
+              <div class="col-sm-6">{{ render_field(form.category) }}</div>
+              <div class="col-sm-6">{{ render_field(form.payment_method) }}</div>
+            </div>
+
+            {{ render_field(form.social_media_influence,
+                            help="Did TikTok, Instagram or Shopee Live make you buy this? Choose None if not.") }}
+
+            {{ render_field(form.date) }}
+            {{ render_field(form.description, rows=3, placeholder="Optional, e.g. Lunch at the cafeteria") }}
+
+            <div class="d-flex gap-2 mt-2">
+              {{ form.submit(class="btn btn-danger flex-grow-1 py-2") }}
+              <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary py-2">Cancel</a>
+            </div>
+          </form>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Highlight the description of the selected expense type in the helper box
+  const typeSelect = document.getElementById("expense_type");
+  function highlightType() {
+    document.querySelectorAll("#expense_type-guide .ss-type-guide-row").forEach(function (row) {
+      row.classList.toggle("is-active", row.dataset.type === typeSelect.value);
+    });
+  }
+  typeSelect.addEventListener("change", highlightType);
+  highlightType();
+</script>
+{% endblock %}

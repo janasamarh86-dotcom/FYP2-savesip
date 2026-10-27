@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_budget_progress, expense_badges, planned_item %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <!-- Header -->
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div>
+      <h1 class="h3 fw-bold mb-1">Hi, {{ current_user.username }}</h1>
+      <p class="text-muted mb-0">Here is your summary for {{ month_name }} {{ year }}.</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('add_income') }}" class="btn btn-success">
+        <i class="bi bi-plus-circle me-1"></i>Add Income
+      </a>
+      <a href="{{ url_for('add_expense') }}" class="btn btn-outline-danger">
+        <i class="bi bi-dash-circle me-1"></i>Add Expense
+      </a>
+    </div>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body d-flex align-items-center">
+          <div class="rounded-3 bg-success bg-opacity-10 text-success fs-3 d-flex align-items-center justify-content-center me-3"
+               style="width: 3.25rem; height: 3.25rem;">
+            <i class="bi bi-arrow-down-circle"></i>
+          </div>
+          <div>
+            <div class="text-muted small">Total Income</div>
+            <div class="h4 fw-bold mb-0 text-success">{{ total_income|rm }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body d-flex align-items-center">
+          <div class="rounded-3 bg-danger bg-opacity-10 text-danger fs-3 d-flex align-items-center justify-content-center me-3"
+               style="width: 3.25rem; height: 3.25rem;">
+            <i class="bi bi-arrow-up-circle"></i>
+          </div>
+          <div>
+            <div class="text-muted small">Total Expenses</div>
+            <div class="h4 fw-bold mb-0 text-danger">{{ total_expenses|rm }}</div>
+            <div class="small text-muted">
+              {{ type_totals["Essential"]|rm }} essential &middot; {{ type_totals["Luxury"]|rm }} wants
+              &middot; {{ type_totals["Situational"]|rm }} unplanned
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      {% set positive = balance >= 0 %}
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body d-flex align-items-center">
+          <div class="rounded-3 {{ 'bg-primary text-primary' if positive else 'bg-danger text-danger' }} bg-opacity-10 fs-3 d-flex align-items-center justify-content-center me-3"
+               style="width: 3.25rem; height: 3.25rem;">
+            <i class="bi bi-wallet2"></i>
+          </div>
+          <div>
+            <div class="text-muted small">Balance</div>
+            <div class="h4 fw-bold mb-0 {{ 'text-primary' if positive else 'text-danger' }}">{{ balance|rm }}</div>
+            <div class="small text-muted">
+              {{ "Income minus expenses this month" if positive else "You have spent more than you earned this month" }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Planned expenses (due within 7 days = reminder) -->
+  {% set reminders = planned|selectattr("is_reminder")|list %}
+  <div class="card border-0 shadow-sm mb-4" id="planned">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h2 class="h6 fw-bold mb-0">
+          <i class="bi bi-calendar-check me-1 text-primary"></i>Planned Expenses
+          {% if reminders %}
+            <span class="badge rounded-pill ss-reminder-badge ms-1">
+              <i class="bi bi-bell-fill me-1"></i>{{ reminders|length }} due within 7 days
+            </span>
+          {% endif %}
+        </h2>
+        <div class="d-flex align-items-center gap-2">
+          {% if planned %}<span class="small text-muted">{{ planned_total|rm }} upcoming</span>{% endif %}
+          <a href="{{ url_for('add_planned_expense') }}" class="btn btn-sm btn-outline-success">
+            <i class="bi bi-plus-lg me-1"></i>Plan an expense
+          </a>
+        </div>
+      </div>
+      {% if planned %}
+        <div class="ss-plan-list">
+          {% for item in planned %}
+            {{ planned_item(item) }}
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-muted mb-0">
+          Nothing planned yet. Add upcoming costs like fees or a trip, and SaveSip will remind you a week before.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="row g-3 mb-4">
+    <div class="col-lg-6">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h6 fw-bold mb-3"><i class="bi bi-pie-chart me-1 text-success"></i>Spending by Category</h2>
+          <div class="position-relative" style="height: 300px;">
+            <canvas id="categoryChart" aria-label="Pie chart of spending by category" role="img"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-3">
+            <h2 class="h6 fw-bold mb-0"><i class="bi bi-phone me-1 text-success"></i>Social Media Influenced Spending</h2>
+            <span class="badge text-bg-light border">{{ social_media_total|rm }} total</span>
+          </div>
+          <div class="position-relative" style="height: 300px;">
+            <canvas id="socialMediaChart" aria-label="Bar chart of spending influenced by each social media platform" role="img"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Budgets -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h6 fw-bold mb-0"><i class="bi bi-piggy-bank me-1 text-success"></i>Budgets for {{ month_name }}</h2>
+        <a href="{{ url_for('set_budget') }}" class="btn btn-sm btn-outline-success">Manage budgets</a>
+      </div>
+      {% if budget_status %}
+        <div class="row">
+          {% for status in budget_status %}
+            <div class="col-md-6 col-xl-4">{{ render_budget_progress(status) }}</div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-muted mb-0">
+          You have not set any budgets for this month.
+          <a href="{{ url_for('set_budget') }}" class="link-success">Set one now</a> to get alerts before you overspend.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Recent transactions -->
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h6 fw-bold mb-3"><i class="bi bi-receipt me-1 text-danger"></i>Recent Expenses</h2>
+          {% if recent_expenses %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                  <tr><th scope="col">Date</th><th scope="col">Category</th><th scope="col">Details</th><th scope="col" class="text-end">Amount</th></tr>
+                </thead>
+                <tbody>
+                  {% for expense in recent_expenses %}
+                    <tr>
+                      <td class="text-nowrap">{{ expense.date.strftime("%d %b %Y") }}</td>
+                      <td>{{ expense.category }}</td>
+                      <td>
+                        {{ expense_badges(expense) }}
+                        {% if expense.description %}<div class="small text-muted">{{ expense.description }}</div>{% endif %}
+                      </td>
+                      <td class="text-end fw-semibold text-danger text-nowrap">{{ expense.amount|rm }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">No expenses yet. <a href="{{ url_for('add_expense') }}" class="link-success">Add your first expense</a>.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body">
+          <h2 class="h6 fw-bold mb-3"><i class="bi bi-cash-coin me-1 text-success"></i>Recent Income</h2>
+          {% if recent_incomes %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                  <tr><th scope="col">Date</th><th scope="col">Source</th><th scope="col" class="text-end">Amount</th></tr>
+                </thead>
+                <tbody>
+                  {% for income in recent_incomes %}
+                    <tr>
+                      <td class="text-nowrap">{{ income.date.strftime("%d %b %Y") }}</td>
+                      <td>
+                        {{ income.source }}
+                        <div class="small text-muted">{{ income.payment_method }}</div>
+                      </td>
+                      <td class="text-end fw-semibold text-success text-nowrap">{{ income.amount|rm }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">No income yet. <a href="{{ url_for('add_income') }}" class="link-success">Add your first income</a>.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+  // Data comes from the dashboard route; |tojson makes it safe JavaScript.
+  const categoryTotals = {{ category_chart|tojson }};
+  const socialMediaTotals = {{ social_media_chart|tojson }};
+
+  SaveSipCharts.pie("categoryChart", categoryTotals, {
+    emptyMessage: "No expenses recorded this month yet.",
+  });
+  SaveSipCharts.bar("socialMediaChart", socialMediaTotals, {
+    label: "Spent",
+    emptyMessage: "No social-media-influenced spending this month. Nice!",
+  });
+</script>
+{% endblock %}

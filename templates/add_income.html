@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_field %}
+
+{% block title %}Add Income{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-9 col-lg-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-4 p-md-5">
+
+          <div class="d-flex align-items-center mb-4">
+            <div class="rounded-3 bg-success bg-opacity-10 text-success fs-3 d-flex align-items-center justify-content-center me-3"
+                 style="width: 3.25rem; height: 3.25rem;">
+              <i class="bi bi-plus-circle"></i>
+            </div>
+            <div>
+              <h1 class="h4 fw-bold mb-0">Add Income</h1>
+              <p class="text-muted small mb-0">Record money you have received.</p>
+            </div>
+          </div>
+
+          <form method="post" action="{{ url_for('add_income') }}">
+            {{ form.hidden_tag() }}
+
+            {{ render_field(form.amount, prefix="RM", inputmode="decimal", placeholder="0.00") }}
+
+            <div class="row">
+              <div class="col-sm-6">{{ render_field(form.source) }}</div>
+              <div class="col-sm-6">{{ render_field(form.payment_method) }}</div>
+            </div>
+
+            {{ render_field(form.date) }}
+            {{ render_field(form.description, rows=3, placeholder="Optional, e.g. October allowance") }}
+
+            <div class="d-flex gap-2 mt-2">
+              {{ form.submit(class="btn btn-success flex-grow-1 py-2") }}
+              <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary py-2">Cancel</a>
+            </div>
+          </form>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

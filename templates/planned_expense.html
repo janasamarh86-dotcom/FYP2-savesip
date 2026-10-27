@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_field, planned_item %}
+
+{% block title %}Planned Expenses{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row g-4">
+
+    <!-- Add a planned expense -->
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-4">
+
+          <div class="d-flex align-items-center mb-4">
+            <div class="rounded-3 bg-primary bg-opacity-10 text-primary fs-3 d-flex align-items-center justify-content-center me-3"
+                 style="width: 3.25rem; height: 3.25rem;">
+              <i class="bi bi-calendar-plus"></i>
+            </div>
+            <div>
+              <h1 class="h4 fw-bold mb-0">Plan an Expense</h1>
+              <p class="text-muted small mb-0">Get a reminder before a big cost is due.</p>
+            </div>
+          </div>
+
+          <form method="post" action="{{ url_for('add_planned_expense') }}">
+            {{ form.hidden_tag() }}
+
+            {{ render_field(form.title, placeholder="e.g. Next semester's fees") }}
+            {{ render_field(form.amount, prefix="RM", inputmode="decimal", placeholder="0.00") }}
+
+            <div class="row">
+              <div class="col-sm-6">{{ render_field(form.category) }}</div>
+              <div class="col-sm-6">{{ render_field(form.target_date, min=today) }}</div>
+            </div>
+
+            {{ render_field(form.description, rows=2, placeholder="e.g. Pay before the 30th to avoid the late fee") }}
+
+            <p class="small text-muted">
+              <i class="bi bi-bell me-1"></i>You will see a reminder on your Dashboard and in
+              notifications from 7 days before the due date.
+            </p>
+
+            {{ form.submit(class="btn btn-success w-100 py-2") }}
+          </form>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Upcoming planned expenses -->
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-4">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="h5 fw-bold mb-0">Upcoming</h2>
+            {% if planned %}
+              <span class="badge rounded-pill text-bg-light border">{{ planned_total|rm }} planned</span>
+            {% endif %}
+          </div>
+
+          {% if planned %}
+            <div class="ss-plan-list">
+              {% for item in planned %}
+                {{ planned_item(item, deletable=True) }}
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-center text-muted py-5">
+              <i class="bi bi-calendar2-check fs-1 d-block mb-2"></i>
+              Nothing planned yet.<br>
+              Add upcoming costs like fees, trips or a new laptop to see them here.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

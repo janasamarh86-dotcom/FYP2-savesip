@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_field %}
+
+{% block title %}Log In{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-sm-10 col-md-7 col-lg-5">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-4 p-md-5">
+
+          <div class="text-center mb-4">
+            <img src="{{ url_for('static', filename='images/Logo.png') }}" alt="SaveSip logo"
+                 class="ss-auth-logo mb-3">
+            <h1 class="h3 fw-bold">Welcome back</h1>
+            <p class="text-muted mb-0">Log in to continue to SaveSip.</p>
+          </div>
+
+          {# No action attribute: the form posts back to this exact URL, so any
+             ?next= page the user was sent from is kept. #}
+          <form method="post">
+            {{ form.hidden_tag() }}
+
+            {{ render_field(form.email, autocomplete="email", placeholder="you@example.com") }}
+            {{ render_field(form.password, autocomplete="current-password") }}
+            {{ render_field(form.remember,
+                            help="Stay signed in after closing your browser. You will still be logged out after 30 minutes of inactivity.") }}
+
+            {{ form.submit(class="btn btn-success w-100 py-2") }}
+          </form>
+
+          <p class="text-center text-muted mt-4 mb-0">
+            New to SaveSip?
+            <a href="{{ url_for('register') }}" class="link-success fw-semibold">Create an account</a>
+          </p>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

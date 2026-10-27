@@ -1,0 +1,166 @@
+{#
+  Shared template helpers. Import with, for example:
+    {% from "_macros.html" import render_field, render_budget_progress, expense_badges %}
+#}
+
+
+{#
+  render_field(field, help=None, prefix=None, **attrs)
+    Renders a WTForms field with Bootstrap 5 classes, its label, optional
+    help text, an optional input prefix (e.g. "RM") and any validation
+    errors. Extra keyword arguments become HTML attributes, e.g.
+    render_field(form.email, autocomplete="email").
+#}
+{% macro render_field(field, help=None, prefix=None) %}
+  {% set help_id = field.id ~ "-help" %}
+  {% set attrs = dict(kwargs, **({"aria-describedby": help_id} if help else {})) %}
+
+  {% if field.type == "BooleanField" %}
+    <div class="form-check mb-3">
+      {{ field(class="form-check-input" ~ (" is-invalid" if field.errors else ""), **attrs) }}
+      {{ field.label(class="form-check-label fw-semibold") }}
+      {% if help %}<div id="{{ help_id }}" class="form-text">{{ help }}</div>{% endif %}
+      {% for error in field.errors %}
+        <div class="invalid-feedback">{{ error }}</div>
+      {% endfor %}
+    </div>
+  {% else %}
+    {% set base_class = "form-select" if field.type == "SelectField" else "form-control" %}
+    {% set control = field(class=base_class ~ (" is-invalid" if field.errors else ""), **attrs) %}
+    {% set errors %}
+      {% for error in field.errors %}
+        <div class="invalid-feedback">{{ error }}</div>
+      {% endfor %}
+    {% endset %}
+    <div class="mb-3">
+      {{ field.label(class="form-label fw-semibold") }}
+      {% if prefix %}
+        <div class="input-group has-validation">
+          <span class="input-group-text">{{ prefix }}</span>
+          {{ control }}
+          {{ errors }}
+        </div>
+      {% else %}
+        {{ control }}
+        {{ errors }}
+      {% endif %}
+      {% if help %}<div id="{{ help_id }}" class="form-text">{{ help }}</div>{% endif %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
+
+{#
+  render_budget_progress(status)
+    One budget row: spent vs. limit with a coloured progress bar.
+    status is an item from budget_status() in routes.py.
+#}
+{% macro render_budget_progress(status) %}
+  {% set bar_class = "bg-danger" if status.over else ("bg-warning" if status.near_limit else "bg-success") %}
+  <div class="mb-3">
+    <div class="d-flex justify-content-between small mb-1">
+      <span class="fw-semibold">{{ status.category }}</span>
+      <span class="text-muted">{{ status.spent|rm }} / {{ status.budget|rm }}</span>
+    </div>
+    <div class="progress" role="progressbar" style="height: 0.6rem;"
+         aria-label="{{ status.category }} budget used"
+         aria-valuenow="{{ status.percent }}" aria-valuemin="0" aria-valuemax="100">
+      <div class="progress-bar {{ bar_class }}" style="width: {{ [status.percent, 100]|min }}%"></div>
+    </div>
+    <div class="small mt-1 {{ 'text-danger fw-semibold' if status.over else 'text-muted' }}">
+      {% if status.over %}
+        Over budget by {{ (-status.remaining)|rm }} ({{ status.percent }}% used)
+      {% else %}
+        {{ status.remaining|rm }} left ({{ status.percent }}% used)
+      {% endif %}
+    </div>
+  </div>
+{% endmacro %}
+
+
+{# Label, icon, CSS key and description for each expense type (stored value -> display) #}
+{% set EXPENSE_TYPE_META = {
+  "Essential": {"label": "Essential", "icon": "shield-check", "key": "need",
+                "hint": "Costs you can't avoid, such as meals, groceries, fees, rent and transport to class."},
+  "Luxury": {"label": "Want", "icon": "bag", "key": "want",
+             "hint": "Nice things you could skip, like treats or impulse buys."},
+  "Situational": {"label": "Unplanned", "icon": "lightning-charge", "key": "unplanned",
+                  "hint": "Unexpected costs you didn't budget for, such as repairs, medicine or emergencies."},
+} %}
+
+
+{#
+  expense_type_guide(field)
+    Helper box under the Expense Type dropdown that explains the three
+    choices. The row for the selected type is highlighted (see
+    add_expense.html).
+#}
+{% macro expense_type_guide(field) %}
+  <div class="ss-type-guide" id="{{ field.id }}-guide">
+    <div class="ss-type-guide-title"><i class="bi bi-info-circle me-1"></i>Which type should I choose?</div>
+    {% for value, info in EXPENSE_TYPE_META.items() %}
+      <div class="ss-type-guide-row{{ ' is-active' if field.data == value }}" data-type="{{ value }}">
+        <i class="bi bi-{{ info.icon }}" aria-hidden="true"></i>
+        <p class="mb-0"><strong>{{ info.label }}.</strong> {{ info.hint }}</p>
+      </div>
+    {% endfor %}
+  </div>
+{% endmacro %}
+
+
+{#
+  planned_item(item, deletable=False)
+    One upcoming planned expense. item comes from upcoming_planned() in
+    routes.py. Items due within 7 days are highlighted as reminders.
+#}
+{% macro planned_item(item, deletable=False) %}
+  {% set plan = item.plan %}
+  <div class="ss-plan-item{{ ' is-reminder' if item.is_reminder }}">
+    <div class="ss-plan-date" aria-hidden="true">
+      <span class="ss-plan-day">{{ plan.target_date.day }}</span>
+      <span class="ss-plan-month">{{ plan.target_date.strftime("%b") }}</span>
+    </div>
+    <div class="flex-grow-1 min-w-0">
+      <div class="fw-semibold text-truncate">{{ plan.title }}</div>
+      <div class="small text-muted">
+        {{ plan.category }} &middot; {{ plan.target_date.strftime("%d %b %Y") }}
+      </div>
+      {% if plan.description %}
+        <div class="ss-plan-note text-truncate" title="{{ plan.description }}">{{ plan.description }}</div>
+      {% endif %}
+    </div>
+    <div class="text-end flex-shrink-0">
+      <div class="fw-bold">{{ plan.amount|rm }}</div>
+      <span class="ss-plan-due">
+        {% if item.is_reminder %}<i class="bi bi-bell-fill me-1"></i>{% endif %}{{ item.due_label }}
+      </span>
+    </div>
+    {% if deletable %}
+      <form action="{{ url_for('delete_planned_expense', plan_id=plan.id) }}" method="post" class="m-0 flex-shrink-0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-sm btn-outline-secondary ss-plan-delete"
+                aria-label="Remove {{ plan.title }}" title="Remove">
+          <i class="bi bi-trash3"></i>
+        </button>
+      </form>
+    {% endif %}
+  </div>
+{% endmacro %}
+
+
+{#
+  expense_badges(expense)
+    Small badges showing the expense type (Essential / Want / Unplanned) and which
+    social media platform (if any) influenced it.
+#}
+{% macro expense_badges(expense) %}
+  {% set platform_icons = {"TikTok": "tiktok", "Instagram": "instagram", "Shopee Live": "broadcast"} %}
+  {% set info = EXPENSE_TYPE_META[expense.expense_type] %}
+  <span class="badge rounded-pill ss-type-badge ss-type-badge-{{ info.key }}">{{ expense.type_label }}</span>
+  {% if expense.is_social_media_influenced %}
+    {% set platform_key = expense.social_media_influence|lower|replace(" ", "-") %}
+    <span class="badge rounded-pill ss-platform-badge ss-platform-{{ platform_key }}">
+      <i class="bi bi-{{ platform_icons.get(expense.social_media_influence, 'phone') }} me-1" aria-hidden="true"></i>{{ expense.social_media_influence }}
+    </span>
+  {% endif %}
+{% endmacro %}

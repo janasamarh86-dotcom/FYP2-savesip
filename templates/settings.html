@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-9 col-xl-8">
+
+      <!-- Header -->
+      <div class="mb-4">
+        <h1 class="h3 fw-bold mb-1"><i class="bi bi-gear text-primary me-2"></i>Settings</h1>
+        <p class="text-muted mb-0">Manage your account and personalise SaveSip.</p>
+      </div>
+
+      <!-- Profile -->
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body p-4 d-flex flex-column flex-sm-row align-items-center gap-4 text-center text-sm-start">
+          <span class="ss-avatar ss-avatar-xl" aria-hidden="true">{{ current_user.username[:1]|upper }}</span>
+          <div>
+            <h2 class="h5 fw-bold mb-1">{{ current_user.username }}</h2>
+            <div class="text-muted"><i class="bi bi-envelope me-1"></i>{{ current_user.email }}</div>
+            <div class="text-muted small mt-1">
+              <i class="bi bi-calendar-check me-1"></i>Member since {{ current_user.created_at.strftime("%B %Y") }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notification Settings -->
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body p-4">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <h2 class="h5 fw-bold mb-0"><i class="bi bi-bell text-primary me-2"></i>Notification Settings</h2>
+          </div>
+          <p class="small text-muted mb-2">Choose which tips appear on your Suggestions page and under the bell.</p>
+
+          <form method="post" action="{{ url_for('settings') }}">
+            {{ form.hidden_tag() }}
+            {% set notification_options = [
+              (form.notify_budget, "When you reach 80% of a budget or go over it."),
+              (form.notify_social, "When wants are influenced by TikTok, Instagram or Shopee Live."),
+              (form.notify_monthly, "A reminder to review your report in the last week of each month."),
+            ] %}
+            {% for field, description in notification_options %}
+              <div class="ss-setting-row d-flex justify-content-between align-items-center gap-3 py-3">
+                <div>
+                  {{ field.label(class="fw-semibold d-block") }}
+                  <div class="small text-muted">{{ description }}</div>
+                </div>
+                <div class="form-check form-switch m-0">
+                  {{ field(class="form-check-input", role="switch") }}
+                </div>
+              </div>
+            {% endfor %}
+
+            <div class="d-flex justify-content-end pt-2">
+              {{ form.submit(class="btn btn-success px-4") }}
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Theme Selection (placeholder) -->
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body p-4">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="h5 fw-bold mb-0"><i class="bi bi-palette text-primary me-2"></i>Theme Selection</h2>
+            <span class="badge rounded-pill text-bg-light border">Coming soon</span>
+          </div>
+
+          {% set themes = [
+            ("theme-brand", "brand", "Violet & Teal", "The SaveSip look", true),
+            ("theme-light", "light", "Light", "Clean and minimal", false),
+            ("theme-dark", "dark", "Dark", "Easy on the eyes at night", false),
+          ] %}
+          <div class="row g-3" role="radiogroup" aria-label="Theme">
+            {% for theme_id, preview, name, description, current in themes %}
+              <div class="col-sm-4">
+                <label class="ss-theme-option {{ 'is-current' if current else 'is-disabled' }}" for="{{ theme_id }}">
+                  <div class="ss-theme-preview ss-theme-preview-{{ preview }}"></div>
+                  <div class="d-flex align-items-start gap-2">
+                    <input class="form-check-input mt-1" type="radio" name="theme" id="{{ theme_id }}"
+                           {{ "checked" if current }} disabled>
+                    <div>
+                      <div class="fw-semibold">{{ name }}</div>
+                      <div class="small text-muted">{{ "Current theme" if current else description }}</div>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <p class="text-center small text-muted mb-0">
+        <i class="bi bi-info-circle me-1"></i>Notification and theme options will be available in a future update.
+      </p>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

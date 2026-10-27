@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_field, render_budget_progress %}
+
+{% block title %}Set Budget{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row g-4">
+
+    <!-- Budget form -->
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-4">
+
+          <div class="d-flex align-items-center mb-4">
+            <div class="ss-page-icon me-3" aria-hidden="true">
+              <i class="bi bi-calculator"></i>
+            </div>
+            <div>
+              <h1 class="h4 fw-bold mb-0">Set Budget</h1>
+              <p class="text-muted small mb-0">Choose a spending limit for a category.</p>
+            </div>
+          </div>
+
+          <form method="post" action="{{ url_for('set_budget') }}">
+            {{ form.hidden_tag() }}
+
+            {{ render_field(form.category) }}
+            {{ render_field(form.amount, prefix="RM", inputmode="decimal", placeholder="0.00") }}
+
+            <div class="row">
+              <div class="col-7">{{ render_field(form.month) }}</div>
+              <div class="col-5">{{ render_field(form.year) }}</div>
+            </div>
+
+            <p class="small text-muted">
+              <i class="bi bi-info-circle me-1"></i>If this category already has a budget for that
+              month, saving will update it.
+            </p>
+
+            {{ form.submit(class="btn btn-success w-100 py-2") }}
+          </form>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Budgets for the viewed month -->
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-4">
+
+          <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-4">
+            <h2 class="h5 fw-bold mb-0">Budgets for {{ month_name }} {{ year }}</h2>
+            <form method="get" action="{{ url_for('set_budget') }}" class="d-flex gap-2">
+              <select name="month" class="form-select form-select-sm" aria-label="Month to view">
+                {% for choice in form.month.choices %}
+                  <option value="{{ choice.value }}" {{ "selected" if choice.value == month }}>{{ choice.label }}</option>
+                {% endfor %}
+              </select>
+              <select name="year" class="form-select form-select-sm" aria-label="Year to view">
+                {% for choice in form.year.choices %}
+                  <option value="{{ choice.value }}" {{ "selected" if choice.value == year }}>{{ choice.label }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-sm btn-outline-success">View</button>
+            </form>
+          </div>
+
+          {% if budget_status %}
+            {% set total_budget = budget_status|sum(attribute="budget") %}
+            {% set total_spent = budget_status|sum(attribute="spent") %}
+            <div class="d-flex justify-content-between bg-light rounded-3 px-3 py-2 mb-4 small">
+              <span>Total budgeted: <strong>{{ total_budget|rm }}</strong></span>
+              <span>Spent in these categories: <strong>{{ total_spent|rm }}</strong></span>
+            </div>
+            {% for status in budget_status %}
+              {{ render_budget_progress(status) }}
+            {% endfor %}
+          {% else %}
+            <div class="text-center text-muted py-5">
+              <i class="bi bi-calculator fs-1 d-block mb-2"></i>
+              No budgets set for {{ month_name }} {{ year }} yet.<br>
+              Use the form to add one.
+            </div>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_field %}
+
+{% block title %}Register{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-sm-10 col-md-7 col-lg-5">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-4 p-md-5">
+
+          <div class="text-center mb-4">
+            <i class="bi bi-person-plus text-success fs-1"></i>
+            <h1 class="h3 fw-bold mt-2">Create your account</h1>
+            <p class="text-muted mb-0">Start tracking your spending in minutes.</p>
+          </div>
+
+          <form method="post" action="{{ url_for('register') }}">
+            {{ form.hidden_tag() }}
+
+            {{ render_field(form.username, autocomplete="username", placeholder="e.g. jana_99",
+                            help="3 to 30 characters: letters, numbers and underscores only.") }}
+            {{ render_field(form.email, autocomplete="email", placeholder="you@example.com") }}
+            {{ render_field(form.password, autocomplete="new-password",
+                            help="At least 8 characters, including a letter and a number.") }}
+            {{ render_field(form.confirm_password, autocomplete="new-password") }}
+
+            {{ form.submit(class="btn btn-success w-100 py-2 mt-2") }}
+          </form>
+
+          <p class="text-center text-muted mt-4 mb-0">
+            Already have an account?
+            <a href="{{ url_for('login') }}" class="link-success fw-semibold">Log in</a>
+          </p>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

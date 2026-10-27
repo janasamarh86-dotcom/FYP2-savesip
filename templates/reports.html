@@ -1,0 +1,525 @@
+{% extends "base.html" %}
+
+{% block title %}Reports: {{ month_name }} {{ year }}{% endblock %}
+
+{% block content %}
+{% macro pct(part, whole) -%}
+  {{ ((part / whole * 100)|round|int) if whole else 0 }}%
+{%- endmacro %}
+
+{% macro chart_card(chart_key, title, subtitle, aria) %}
+  <div class="rpt-chart-card">
+    <div class="rpt-chart-title">{{ title }}</div>
+    <div class="rpt-chart-sub">{{ subtitle }}</div>
+    <div class="rpt-chart-box">
+      <canvas data-chart="{{ chart_key }}" role="img" aria-label="{{ aria }}"></canvas>
+    </div>
+  </div>
+{% endmacro %}
+
+{% set month_names = ["January", "February", "March", "April", "May", "June", "July",
+                      "August", "September", "October", "November", "December"] %}
+{% set days_in_month = charts.daily_spending.labels|length %}
+{% set positive = balance >= 0 %}
+{% set ns = namespace(influenced=0) %}
+{% for name, amount in expense_by_influence.items() if name != "None" %}
+  {% set ns.influenced = ns.influenced + amount %}
+{% endfor %}
+
+<div class="container">
+
+  <!-- Toolbar (not part of the PDF) -->
+  <div class="rpt-toolbar d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-3 mb-4">
+    <div>
+      <h1 class="h3 fw-bold mb-1">Reports</h1>
+      <p class="text-muted mb-0">Your monthly financial report for {{ month_name }} {{ year }}.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <a href="{{ url_for('reports', **prev_period) }}" class="btn btn-outline-secondary" aria-label="Previous month">
+        <i class="bi bi-chevron-left"></i>
+      </a>
+      <form method="get" action="{{ url_for('reports') }}" class="d-flex gap-2">
+        <select name="month" class="form-select" aria-label="Month">
+          {% for name in month_names %}
+            <option value="{{ loop.index }}" {{ "selected" if loop.index == month }}>{{ name }}</option>
+          {% endfor %}
+        </select>
+        <input type="number" name="year" class="form-control" style="width: 6.5rem;"
+               min="2000" max="2100" value="{{ year }}" aria-label="Year">
+        <button type="submit" class="btn btn-outline-success">View</button>
+      </form>
+      <a href="{{ url_for('reports', **next_period) }}" class="btn btn-outline-secondary" aria-label="Next month">
+        <i class="bi bi-chevron-right"></i>
+      </a>
+      <button type="button" id="download-pdf" class="btn btn-success">
+        <i class="bi bi-file-earmark-pdf me-1"></i>Download as PDF
+      </button>
+    </div>
+  </div>
+
+  {#
+    Layout notes
+    - On screen the report is a wide, responsive page (max 1200px).
+    - The PDF is made from a hidden copy of #report-content with the
+      .rpt-print class, which switches it to the fixed 210mm A4 layout
+      (see "Download as PDF" below and the Reports section of style.css).
+    - Each .rpt-block is kept on one PDF page (html2pdf "avoid"). html2pdf
+      moves a block by inserting a spacer before it, so .rpt-block must never
+      be a grid or flex item; chart grids sit inside a block.
+    - Planned PDF pages: 1) header, summary, category table
+                         2) all charts   3) budget and transactions
+  #}
+  <div class="rpt-paper">
+  <article id="report-content" class="rpt-sheet">
+
+    <!-- ===================== Page 1 ===================== -->
+
+    <!-- Report header: wide banner on screen, centred stack in the PDF -->
+    <header class="rpt-block rpt-header">
+      <div class="rpt-banner">
+        <div class="rpt-brand">
+          <img src="{{ url_for('static', filename='images/Logo.png') }}" alt="SaveSip logo" class="rpt-logo">
+          <div class="rpt-heading">
+            <div class="rpt-kicker">SaveSip &middot; Personal Finance</div>
+            <h2 class="rpt-title">Monthly Financial Report</h2>
+            <div class="rpt-period">Reporting period: 1&ndash;{{ days_in_month }} {{ month_name }} {{ year }}</div>
+          </div>
+        </div>
+        <div class="rpt-meta">
+          <span class="rpt-meta-item"><span class="rpt-meta-label">Prepared for</span><span class="rpt-meta-value">{{ current_user.username }}</span></span>
+          <span class="rpt-meta-item"><span class="rpt-meta-label">Report date</span><span class="rpt-meta-value" id="generated-at">&mdash;</span></span>
+          <span class="rpt-meta-item"><span class="rpt-meta-label">Currency</span><span class="rpt-meta-value">Malaysian Ringgit (RM)</span></span>
+        </div>
+      </div>
+      <div class="rpt-rule"></div>
+    </header>
+
+    <!-- 01 Executive Summary -->
+    <section class="rpt-block">
+      <h3 class="rpt-section-title"><span>01</span>Executive Summary</h3>
+
+      <div class="rpt-kpis">
+        <div class="rpt-kpi" style="--kpi-color: var(--ss-teal);">
+          <div class="rpt-kpi-label">Total Income</div>
+          <div class="rpt-kpi-value text-success">{{ total_income|rm }}</div>
+          <div class="rpt-kpi-note">{{ incomes|length }} transaction{{ "s" if incomes|length != 1 }}</div>
+        </div>
+        <div class="rpt-kpi" style="--kpi-color: #e5484d;">
+          <div class="rpt-kpi-label">Total Expenses</div>
+          <div class="rpt-kpi-value text-danger">{{ total_expenses|rm }}</div>
+          <div class="rpt-kpi-note">{{ expenses|length }} transaction{{ "s" if expenses|length != 1 }}</div>
+        </div>
+        <div class="rpt-kpi" style="--kpi-color: var(--ss-violet);">
+          <div class="rpt-kpi-label">Net Balance</div>
+          <div class="rpt-kpi-value {{ 'text-primary' if positive else 'text-danger' }}">{{ balance|rm }}</div>
+          <div class="rpt-kpi-note">{{ "Surplus" if positive else "Deficit" }} for the month</div>
+        </div>
+        <div class="rpt-kpi" style="--kpi-color: var(--ss-orange);">
+          <div class="rpt-kpi-label">Savings Rate</div>
+          <div class="rpt-kpi-value">{{ pct(balance, total_income) if total_income else "&mdash;"|safe }}</div>
+          <div class="rpt-kpi-note">Share of income kept</div>
+        </div>
+      </div>
+
+      <div class="rpt-stats">
+        {% set profile = [
+          ("Essential", type_totals["Essential"], "teal"),
+          ("Wants", type_totals["Luxury"], "orange"),
+          ("Unplanned", type_totals["Situational"], "blue"),
+          ("Social media", ns.influenced, "pink"),
+        ] %}
+        {% for label, amount, color in profile %}
+          <div class="rpt-stat">
+            <div class="d-flex justify-content-between align-items-baseline gap-2">
+              <span class="rpt-stat-label">{{ label }}</span>
+              <span class="rpt-stat-share">{{ pct(amount, total_expenses) }}</span>
+            </div>
+            <div class="rpt-stat-value">{{ amount|rm }}</div>
+            <div class="rpt-bar rpt-bar-{{ color }}">
+              <span style="width: {{ ((amount / total_expenses * 100)|round|int) if total_expenses else 0 }}%"></span>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- 02 Category Breakdown -->
+    <section class="rpt-block">
+      <h3 class="rpt-section-title"><span>02</span>Category Breakdown</h3>
+      <div class="rpt-table-wrap">
+      <table class="rpt-table">
+        <colgroup>
+          <col style="width: 26%;"><col style="width: 18%;"><col style="width: 20%;"><col style="width: 36%;">
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col">Category</th>
+            <th scope="col" class="num">Transactions</th>
+            <th scope="col" class="num">Amount</th>
+            <th scope="col">Share of Spending</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for category, amount in expense_by_category.items() %}
+            {% set share = ((amount / total_expenses * 100)|round|int) if total_expenses else 0 %}
+            <tr class="{{ 'is-zero' if not amount }}">
+              <td class="fw-semibold">{{ category }}</td>
+              <td class="num">{{ expenses|selectattr("category", "equalto", category)|list|length }}</td>
+              <td class="num">{{ amount|rm }}</td>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="rpt-bar flex-grow-1"><span style="width: {{ share }}%"></span></div>
+                  <span class="rpt-share">{{ share }}%</span>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>Total</td>
+            <td class="num">{{ expenses|length }}</td>
+            <td class="num">{{ total_expenses|rm }}</td>
+            <td><span class="rpt-share">{{ "100%" if total_expenses else "0%" }}</span></td>
+          </tr>
+        </tfoot>
+      </table>
+      </div>
+    </section>
+
+    <div class="html2pdf__page-break"></div>
+
+    <!-- ===================== Page 2 ===================== -->
+
+    <!-- 03 Spending Overview -->
+    <div class="rpt-block">
+      <h3 class="rpt-section-title"><span>03</span>Spending Overview</h3>
+      <div class="rpt-grid-2">
+        {{ chart_card("category", "Spending by Category", "Share of total expenses",
+                      "Pie chart of spending by category") }}
+        {{ chart_card("social-media", "Social Media Influence", "Spending by influencing platform",
+                      "Bar chart of spending by social media influence") }}
+      </div>
+    </div>
+    <div class="rpt-block">
+      <div class="rpt-grid-2">
+        {{ chart_card("payment", "Payment Methods", "Cash vs. cashless spending",
+                      "Doughnut chart of spending by payment method") }}
+        {{ chart_card("income-source", "Income by Source", "Where your money came from",
+                      "Bar chart of income by source") }}
+      </div>
+    </div>
+
+    <!-- 04 Trends -->
+    <div class="rpt-block">
+      <h3 class="rpt-section-title"><span>04</span>Trends</h3>
+      <div class="rpt-grid-2">
+        {{ chart_card("daily", "Daily Spending", "Expenses for each day of " ~ month_name,
+                      "Bar chart of spending for each day of the month") }}
+        {{ chart_card("trend", "Income vs. Expenses", "Last 6 months",
+                      "Line chart of income and expenses over the last six months") }}
+      </div>
+    </div>
+
+    <div class="html2pdf__page-break"></div>
+
+    <!-- ===================== Page 3+ ===================== -->
+
+    <!-- 05 Budget vs. Actual -->
+    <section class="rpt-block">
+      <h3 class="rpt-section-title"><span>05</span>Budget vs. Actual</h3>
+      {% if budget_status %}
+        {% set total_budget = budget_status|sum(attribute="budget") %}
+        {% set total_spent = budget_status|sum(attribute="spent") %}
+        <div class="rpt-table-wrap">
+        <table class="rpt-table">
+          <colgroup>
+            <col style="width: 22%;"><col style="width: 16%;"><col style="width: 16%;">
+            <col style="width: 17%;"><col style="width: 11%;"><col style="width: 18%;">
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Category</th>
+              <th scope="col" class="num">Budget</th>
+              <th scope="col" class="num">Spent</th>
+              <th scope="col" class="num">Remaining</th>
+              <th scope="col" class="num">Used</th>
+              <th scope="col" class="text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for status in budget_status %}
+              <tr>
+                <td class="fw-semibold">{{ status.category }}</td>
+                <td class="num">{{ status.budget|rm }}</td>
+                <td class="num">{{ status.spent|rm }}</td>
+                <td class="num {{ 'text-danger fw-semibold' if status.over }}">{{ status.remaining|rm }}</td>
+                <td class="num">{{ status.percent }}%</td>
+                <td class="text-center">
+                  {% if status.over %}
+                    <span class="rpt-status rpt-status-over">Over budget</span>
+                  {% elif status.near_limit %}
+                    <span class="rpt-status rpt-status-near">Near limit</span>
+                  {% else %}
+                    <span class="rpt-status rpt-status-ok">On track</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td class="num">{{ total_budget|rm }}</td>
+              <td class="num">{{ total_spent|rm }}</td>
+              <td class="num {{ 'text-danger' if total_spent > total_budget }}">{{ (total_budget - total_spent)|rm }}</td>
+              <td class="num">{{ pct(total_spent, total_budget) }}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+        </div>
+      {% else %}
+        <p class="rpt-empty mb-0">No budgets were set for {{ month_name }} {{ year }}.</p>
+      {% endif %}
+    </section>
+
+    <!-- 06 Transaction Details (long tables may continue onto further pages;
+         individual rows are never split) -->
+    <section class="rpt-section-flow">
+      <div class="rpt-block">
+        <h3 class="rpt-section-title"><span>06</span>Transaction Details</h3>
+        <h4 class="rpt-subtitle mb-0">Expenses ({{ expenses|length }})</h4>
+      </div>
+      {% if expenses %}
+        <div class="rpt-table-wrap mt-2 mb-4">
+        <table class="rpt-table rpt-table-compact">
+          <colgroup>
+            <col style="width: 10%;"><col style="width: 15%;"><col style="width: 24%;"><col style="width: 12%;">
+            <col style="width: 13%;"><col style="width: 10%;"><col style="width: 16%;">
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Category</th>
+              <th scope="col">Notes</th>
+              <th scope="col">Payment</th>
+              <th scope="col">Influence</th>
+              <th scope="col" class="text-center">Type</th>
+              <th scope="col" class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for expense in expenses %}
+              <tr>
+                <td class="text-nowrap">{{ expense.date.strftime("%d %b") }}</td>
+                <td>{{ expense.category }}</td>
+                <td class="rpt-notes">{{ expense.description or "" }}</td>
+                <td>{{ expense.payment_method }}</td>
+                <td>{{ expense.social_media_influence if expense.is_social_media_influenced else "None" }}</td>
+                <td class="text-center">{{ expense.type_label }}</td>
+                <td class="num">{{ expense.amount|rm }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr><td colspan="6">Total expenses</td><td class="num">{{ total_expenses|rm }}</td></tr>
+          </tfoot>
+        </table>
+        </div>
+      {% else %}
+        <p class="rpt-empty mt-2 mb-4">No expenses recorded for this month.</p>
+      {% endif %}
+
+      <div class="rpt-block">
+        <h4 class="rpt-subtitle mb-0">Income ({{ incomes|length }})</h4>
+      </div>
+      {% if incomes %}
+        <div class="rpt-table-wrap mt-2">
+        <table class="rpt-table rpt-table-compact">
+          <colgroup>
+            <col style="width: 10%;"><col style="width: 20%;"><col style="width: 38%;">
+            <col style="width: 14%;"><col style="width: 18%;">
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Source</th>
+              <th scope="col">Description</th>
+              <th scope="col">Payment</th>
+              <th scope="col" class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for income in incomes %}
+              <tr>
+                <td class="text-nowrap">{{ income.date.strftime("%d %b") }}</td>
+                <td>{{ income.source }}</td>
+                <td class="rpt-notes">{{ income.description or "" }}</td>
+                <td>{{ income.payment_method }}</td>
+                <td class="num">{{ income.amount|rm }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr><td colspan="4">Total income</td><td class="num">{{ total_income|rm }}</td></tr>
+          </tfoot>
+        </table>
+        </div>
+      {% else %}
+        <p class="rpt-empty mt-2 mb-0">No income recorded for this month.</p>
+      {% endif %}
+    </section>
+
+  </article>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+  // Data comes from the reports route; |tojson makes it safe JavaScript.
+  const charts = {{ charts|tojson }};
+  const pdfFilename = {{ "SaveSip-Report-%d-%02d.pdf"|format(year, month)|tojson }};
+  const pdfFooterLabel = {{ ("SaveSip Monthly Financial Report  |  " ~ month_name ~ " " ~ year)|tojson }};
+
+  const reportSheet = document.getElementById("report-content");
+  const downloadButton = document.getElementById("download-pdf");
+
+  // Draws every report chart inside root (the page, or the hidden PDF copy)
+  function renderReportCharts(root) {
+    const canvas = function (key) { return root.querySelector('canvas[data-chart="' + key + '"]'); };
+    return [
+      SaveSipCharts.pie(canvas("category"), charts.expense_by_category, {
+        emptyMessage: "No expenses recorded this month.",
+      }),
+      SaveSipCharts.bar(canvas("social-media"), charts.expense_by_influence, {
+        label: "Spent",
+        emptyMessage: "No expenses recorded this month.",
+      }),
+      SaveSipCharts.pie(canvas("payment"), charts.expense_by_payment, {
+        doughnut: true,
+        emptyMessage: "No expenses recorded this month.",
+      }),
+      SaveSipCharts.bar(canvas("income-source"), charts.income_by_source, {
+        label: "Received",
+        horizontal: true,
+        emptyMessage: "No income recorded this month.",
+      }),
+      SaveSipCharts.bar(canvas("daily"), charts.daily_spending, {
+        label: "Spent",
+        color: SaveSipCharts.colors.violet,
+        emptyMessage: "No expenses recorded this month.",
+      }),
+      SaveSipCharts.line(canvas("trend"), charts.trend.labels, [
+        { label: "Income", data: charts.trend.income, color: SaveSipCharts.colors.teal },
+        { label: "Expenses", data: charts.trend.expenses, color: SaveSipCharts.colors.red },
+      ], { emptyMessage: "No income or expenses in the last 6 months." }),
+    ].filter(Boolean);
+  }
+
+  document.getElementById("generated-at").textContent = new Date().toLocaleDateString("en-MY", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  renderReportCharts(reportSheet);
+
+  // ---------------------------------------------------------------------
+  // Download as PDF
+  //
+  // html2pdf photographs elements with screen styles (it ignores @media
+  // print), so the PDF is made from a hidden copy of the report with the
+  // .rpt-print class, which switches it to the fixed 210mm A4 layout. The
+  // charts are redrawn at A4 size inside the copy. The page itself never
+  // changes while the PDF is generated.
+  // ---------------------------------------------------------------------
+  function waitForLayout() {
+    return new Promise(function (resolve) {
+      requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+    });
+  }
+
+  function createPrintCopy() {
+    const holder = document.createElement("div");
+    holder.className = "rpt-print-holder";
+    holder.setAttribute("aria-hidden", "true");
+
+    const copy = reportSheet.cloneNode(true);
+    copy.classList.add("rpt-print");
+    copy.removeAttribute("id");
+    copy.querySelectorAll("[id]").forEach(function (el) { el.removeAttribute("id"); });
+    // Fresh canvases: drop the on-screen size Chart.js stored on them
+    copy.querySelectorAll("canvas").forEach(function (el) {
+      el.removeAttribute("style");
+      el.removeAttribute("width");
+      el.removeAttribute("height");
+    });
+
+    holder.appendChild(copy);
+    document.body.appendChild(holder);
+
+    const previousAnimation = Chart.defaults.animation;
+    Chart.defaults.animation = false;
+    const copyCharts = renderReportCharts(copy);
+    Chart.defaults.animation = previousAnimation;
+
+    return { holder: holder, copy: copy, charts: copyCharts };
+  }
+
+  // Running footer on every page: report name on the left, page number on the right
+  function addPageFooters(pdf) {
+    const pageCount = pdf.internal.getNumberOfPages();
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    pdf.setFontSize(8);
+    pdf.setTextColor(110, 106, 133);
+    for (let page = 1; page <= pageCount; page++) {
+      pdf.setPage(page);
+      pdf.setDrawColor(228, 224, 246);
+      pdf.line(12, pageHeight - 11, pageWidth - 12, pageHeight - 11);
+      pdf.text(pdfFooterLabel, 12, pageHeight - 7);
+      pdf.text("Page " + page + " of " + pageCount, pageWidth - 12, pageHeight - 7, { align: "right" });
+    }
+  }
+
+  downloadButton.addEventListener("click", async function () {
+    const originalLabel = downloadButton.innerHTML;
+    downloadButton.disabled = true;
+    downloadButton.innerHTML =
+      '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Preparing PDF...';
+
+    const printCopy = createPrintCopy();
+    await waitForLayout();
+
+    try {
+      await html2pdf()
+        .set({
+          // [top, left, bottom, right] in mm. Left/right are 0 because the
+          // sheet is exactly 210mm wide and carries its own 12mm side padding.
+          margin: [10, 0, 16, 0],
+          filename: pdfFilename,
+          image: { type: "jpeg", quality: 0.96 },
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff", scrollX: 0, scrollY: 0 },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          pagebreak: { mode: ["css", "legacy"], avoid: [".rpt-block", ".rpt-table tr"] },
+        })
+        .from(printCopy.copy)
+        .toPdf()
+        .get("pdf")
+        .then(addPageFooters)
+        .save();
+    } catch (error) {
+      console.error(error);
+      alert("Sorry, the PDF could not be created. Please try again.");
+    } finally {
+      printCopy.charts.forEach(function (chart) { chart.destroy(); });
+      printCopy.holder.remove();
+      downloadButton.disabled = false;
+      downloadButton.innerHTML = originalLabel;
+    }
+  });
+</script>
+{% endblock %}
