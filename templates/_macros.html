@@ -74,6 +74,33 @@
         {{ status.remaining|rm }} left ({{ status.percent }}% used)
       {% endif %}
     </div>
+    {% if status.description %}
+      <div class="ss-budget-note"><i class="bi bi-chat-left-text me-1"></i>{{ status.description }}</div>
+    {% endif %}
+  </div>
+{% endmacro %}
+
+
+{#
+  row_actions(edit_url, delete_url, label, next_url)
+    Edit (a link) and Delete (a POST form with a CSRF token) buttons for one
+    income or expense row. The delete form asks for confirmation through its
+    data-confirm text (handled in base.html). next_url is the page to return
+    to afterwards.
+#}
+{% macro row_actions(edit_url, delete_url, label, next_url) %}
+  <div class="ss-row-actions">
+    <a href="{{ edit_url }}" class="ss-row-btn" title="Edit" aria-label="Edit {{ label }}">
+      <i class="bi bi-pencil" aria-hidden="true"></i>
+    </a>
+    <form action="{{ delete_url }}" method="post" class="m-0"
+          data-confirm="Delete this {{ label }}? This cannot be undone.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <button type="submit" class="ss-row-btn ss-row-btn-danger" title="Delete" aria-label="Delete {{ label }}">
+        <i class="bi bi-trash3" aria-hidden="true"></i>
+      </button>
+    </form>
   </div>
 {% endmacro %}
 

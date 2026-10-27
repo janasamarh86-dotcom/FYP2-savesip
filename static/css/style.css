@@ -1260,6 +1260,73 @@ main {
   width: min(360px, calc(100vw - 2rem));
 }
 
+/* The bell menu uses data-bs-display="static", so CSS places it: under the
+   bell on larger screens, and as a centred panel on phones so it can never
+   run off either edge of the screen. */
+.ss-notify-menu[data-bs-popper] {
+  top: calc(100% + 0.5rem);
+}
+
+@media (max-width: 575.98px) {
+  .ss-notify-menu[data-bs-popper] {
+    position: fixed;
+    top: calc(var(--ss-nav-h) + 0.5rem);
+    right: auto;
+    left: 50%;
+    width: calc(100vw - 2rem);
+    max-width: 360px;
+    max-height: calc(100vh - var(--ss-nav-h) - 1.5rem);
+    overflow-y: auto;
+    transform: translateX(-50%);
+  }
+}
+
+/* Edit / Delete buttons in transaction tables */
+.ss-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.ss-row-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.55rem;
+  background: #fff;
+  color: var(--ss-muted);
+  font-size: 0.85rem;
+  text-decoration: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.ss-row-btn:hover,
+.ss-row-btn:focus-visible {
+  border-color: #cfc8f6;
+  background: #f6f5fd;
+  color: var(--ss-violet-dark);
+}
+
+.ss-row-btn-danger:hover,
+.ss-row-btn-danger:focus-visible {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+/* Note under a budget's progress bar */
+.ss-budget-note {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--ss-muted);
+  overflow-wrap: anywhere;
+}
+
 .ss-notify-item {
   display: flex;
   align-items: flex-start;
@@ -2066,6 +2133,15 @@ main {
 
   .html2pdf__page-break {
     break-before: page;
+  }
+
+  /* Edit/Delete buttons are for the screen only */
+  .rpt-no-print {
+    display: none !important;
+  }
+
+  col.rpt-no-print {
+    visibility: collapse;
   }
 
   .rpt-chart-box canvas {

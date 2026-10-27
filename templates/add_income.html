@@ -13,15 +13,15 @@
           <div class="d-flex align-items-center mb-4">
             <div class="rounded-3 bg-success bg-opacity-10 text-success fs-3 d-flex align-items-center justify-content-center me-3"
                  style="width: 3.25rem; height: 3.25rem;">
-              <i class="bi bi-plus-circle"></i>
+              <i class="bi bi-{{ 'pencil-square' if editing else 'plus-circle' }}"></i>
             </div>
             <div>
-              <h1 class="h4 fw-bold mb-0">Add Income</h1>
-              <p class="text-muted small mb-0">Record money you have received.</p>
+              <h1 class="h4 fw-bold mb-0">{{ "Edit Income" if editing else "Add Income" }}</h1>
+              <p class="text-muted small mb-0">{{ "Update the details of this income." if editing else "Record money you have received." }}</p>
             </div>
           </div>
 
-          <form method="post" action="{{ url_for('add_income') }}">
+          <form method="post" action="{{ form_action or url_for('add_income') }}">
             {{ form.hidden_tag() }}
 
             {{ render_field(form.amount, prefix="RM", inputmode="decimal", placeholder="0.00") }}
@@ -35,8 +35,8 @@
             {{ render_field(form.description, rows=3, placeholder="Optional, e.g. October allowance") }}
 
             <div class="d-flex gap-2 mt-2">
-              {{ form.submit(class="btn btn-success flex-grow-1 py-2") }}
-              <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary py-2">Cancel</a>
+              {{ form.submit(class="btn btn-success flex-grow-1 py-2", value=("Save Changes" if editing else form.submit.label.text)) }}
+              <a href="{{ cancel_url or url_for('dashboard') }}" class="btn btn-outline-secondary py-2">Cancel</a>
             </div>
           </form>
 

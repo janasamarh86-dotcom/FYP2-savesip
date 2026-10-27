@@ -29,6 +29,7 @@ CATEGORIES = [
     "Savings",
     "Academic",
     "Social",
+    "House Rent",  # added in FYP 2 for students renting off campus
 ]
 
 SOCIAL_MEDIA_PLATFORMS = ["TikTok", "Instagram", "Shopee Live"]
@@ -295,6 +296,8 @@ class Budget(db.Model):
     amount = db.Column(db.Numeric(10, 2), nullable=False)
     month = db.Column(db.Integer, nullable=False)
     year = db.Column(db.Integer, nullable=False)
+    # Optional note on why this budget was set
+    description = db.Column(db.String(255))
 
     @validates("category")
     def _validate_category(self, key, value):
@@ -355,6 +358,7 @@ def upgrade_schema():
     2. PlannedExpense gained an optional description.
     3. User gained notification preferences (budget and social media alerts
        on, monthly reminder off, as on the Settings page).
+    4. Budget gained an optional description.
     """
     inspector = inspect(db.engine)
     tables = inspector.get_table_names()
@@ -365,6 +369,7 @@ def upgrade_schema():
     expense_columns = columns_of("expenses")
     planned_columns = columns_of("planned_expenses")
     user_columns = columns_of("users")
+    budget_columns = columns_of("budgets")
     notification_defaults = {"notify_budget": 1, "notify_social": 1, "notify_monthly": 0}
 
     with db.engine.begin() as connection:
@@ -392,3 +397,6 @@ def upgrade_schema():
                     connection.execute(text(
                         f"ALTER TABLE users ADD COLUMN {column} BOOLEAN NOT NULL DEFAULT {default}"
                     ))
+
+        if budget_columns is not None and "description" not in budget_columns:
+            connection.execute(text("ALTER TABLE budgets ADD COLUMN description VARCHAR(255)"))

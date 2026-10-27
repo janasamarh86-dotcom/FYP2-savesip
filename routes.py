@@ -6,13 +6,15 @@ current_user.id, so users only ever see and change their own data.
 """
 
 import calendar
+import csv
+import io
 import re
 import time
 from datetime import date, timedelta
 from decimal import Decimal
 from urllib.parse import urlsplit
 
-from flask import abort, flash, redirect, render_template, request, session, url_for
+from flask import Response, abort, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf.csrf import CSRFError
 from sqlalchemy import func, select
@@ -180,6 +182,7 @@ def budget_status(year, month, spent_by_category):
             "percent": percent,
             "over": over,
             "near_limit": not over and percent >= BUDGET_WARNING_PERCENT,
+            "description": budget.description,
         })
     return status
 
@@ -443,6 +446,93 @@ def add_expense():
     return render_template("add_expense.html", form=form)
 
 
+def _owned_or_404(model, record_id):
+    """Fetch one of the current user's records, or show 404 for anyone else's."""
+    record = db.session.get(model, record_id)
+    if record is None or record.user_id != current_user.id:
+        abort(404)
+    return record
+
+
+def _back_url():
+    """Where to return after editing or deleting: the page the user came from
+    (?next= or the form's "next" field, if it is a page on this site), else
+    the Dashboard."""
+    return safe_next_url(request.values.get("next")) or url_for("dashboard")
+
+
+@app.route("/edit_income/<int:income_id>", methods=["GET", "POST"])
+@login_required
+def edit_income(income_id):
+    income = _owned_or_404(Income, income_id)
+    form = IncomeForm(obj=income)  # pre-fills the form on GET
+    if form.validate_on_submit():
+        income.amount = form.amount.data
+        income.source = form.source.data
+        income.payment_method = form.payment_method.data
+        income.date = form.date.data
+        income.description = form.description.data or None
+        db.session.commit()
+        flash(f"Income of RM{income.amount:,.2f} from {income.source} updated.", "success")
+        return redirect(_back_url())
+
+    return render_template(
+        "add_income.html",
+        form=form,
+        editing=True,
+        form_action=url_for("edit_income", income_id=income.id, next=request.args.get("next")),
+        cancel_url=_back_url(),
+    )
+
+
+@app.route("/delete_income/<int:income_id>", methods=["POST"])
+@login_required
+def delete_income(income_id):
+    income = _owned_or_404(Income, income_id)
+    message = f"Deleted income of RM{income.amount:,.2f} from {income.source}."
+    db.session.delete(income)
+    db.session.commit()
+    flash(message, "info")
+    return redirect(_back_url())
+
+
+@app.route("/edit_expense/<int:expense_id>", methods=["GET", "POST"])
+@login_required
+def edit_expense(expense_id):
+    expense = _owned_or_404(Expense, expense_id)
+    form = ExpenseForm(obj=expense)  # pre-fills the form on GET
+    if form.validate_on_submit():
+        expense.amount = form.amount.data
+        expense.category = form.category.data
+        expense.payment_method = form.payment_method.data
+        expense.social_media_influence = form.social_media_influence.data
+        expense.expense_type = form.expense_type.data
+        expense.date = form.date.data
+        expense.description = form.description.data or None
+        db.session.commit()
+        flash(f"Expense of RM{expense.amount:,.2f} for {expense.category} updated.", "success")
+        return redirect(_back_url())
+
+    return render_template(
+        "add_expense.html",
+        form=form,
+        editing=True,
+        form_action=url_for("edit_expense", expense_id=expense.id, next=request.args.get("next")),
+        cancel_url=_back_url(),
+    )
+
+
+@app.route("/delete_expense/<int:expense_id>", methods=["POST"])
+@login_required
+def delete_expense(expense_id):
+    expense = _owned_or_404(Expense, expense_id)
+    message = f"Deleted expense of RM{expense.amount:,.2f} for {expense.category}."
+    db.session.delete(expense)
+    db.session.commit()
+    flash(message, "info")
+    return redirect(_back_url())
+
+
 @app.route("/set_budget", methods=["GET", "POST"])
 @login_required
 def set_budget():
@@ -460,6 +550,7 @@ def set_budget():
         )
         if budget:
             budget.amount = form.amount.data
+            budget.description = form.description.data or None
             action = "updated"
         else:
             db.session.add(Budget(
@@ -468,6 +559,7 @@ def set_budget():
                 amount=form.amount.data,
                 month=month,
                 year=year,
+                description=form.description.data or None,
             ))
             action = "set"
 
@@ -576,6 +668,61 @@ def reports():
         expenses=expenses_for(start, end),
         incomes=incomes_for(start, end),
         charts=charts,
+    )
+
+
+def _spreadsheet_safe(text):
+    """Stop user text from running as a formula when the file is opened in
+    Excel (CSV injection): text starting with = + - @ is prefixed with '."""
+    text = text or ""
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
+@app.route("/reports/export")
+@login_required
+def export_report():
+    """Download the month's transactions as a CSV file that opens in Excel."""
+    year, month = requested_period()
+    start, end = month_bounds(year, month)
+    expenses = expenses_for(start, end)
+    incomes = incomes_for(start, end)
+
+    rows = []
+    for expense in expenses:
+        rows.append((expense.date, expense.id, [
+            expense.date.isoformat(), "Expense", expense.category, expense.type_label,
+            expense.payment_method,
+            expense.social_media_influence if expense.is_social_media_influenced else "",
+            _spreadsheet_safe(expense.description), f"{expense.amount:.2f}",
+        ]))
+    for income in incomes:
+        rows.append((income.date, income.id, [
+            income.date.isoformat(), "Income", income.source, "", income.payment_method, "",
+            _spreadsheet_safe(income.description), f"{income.amount:.2f}",
+        ]))
+    rows.sort(key=lambda row: (row[0], row[1]))
+
+    total_income = sum((income.amount for income in incomes), ZERO)
+    total_expenses = sum_amounts(expenses)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([f"SaveSip transactions - {calendar.month_name[month]} {year}"])
+    writer.writerow([])
+    writer.writerow(["Date", "Type", "Category / Source", "Expense Type", "Payment Method",
+                     "Social Media", "Notes", "Amount (RM)"])
+    writer.writerows(row[2] for row in rows)
+    writer.writerow([])
+    writer.writerow(["", "", "", "", "", "", "Total income", f"{total_income:.2f}"])
+    writer.writerow(["", "", "", "", "", "", "Total expenses", f"{total_expenses:.2f}"])
+    writer.writerow(["", "", "", "", "", "", "Balance", f"{total_income - total_expenses:.2f}"])
+
+    filename = f"SaveSip-Transactions-{year}-{month:02d}.csv"
+    # The byte-order mark makes Excel read the file as UTF-8
+    return Response(
+        "\ufeff" + buffer.getvalue(),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

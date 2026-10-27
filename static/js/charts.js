@@ -8,11 +8,11 @@
 (function (global) {
   "use strict";
 
-  // Palette for the 9 categories (and any other unnamed series), based on
+  // Palette for the 10 categories (and any other unnamed series), based on
   // the SaveSip violet / teal theme
   const PALETTE = [
     "#6c5ce7", "#14b8a6", "#f59e42", "#ec4899", "#4f46e5",
-    "#10b981", "#fbbf24", "#a78bfa", "#64748b",
+    "#10b981", "#fbbf24", "#a78bfa", "#64748b", "#0ea5e9",
   ];
 
   // Fixed colours so a label always looks the same on every chart

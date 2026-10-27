@@ -329,4 +329,9 @@ class BudgetForm(FlaskForm):
         default=current_budget_year,
         validators=[DataRequired()],
     )
+    description = TextAreaField(
+        "Note (optional)",
+        filters=[_strip],
+        validators=[Optional(), Length(max=255)],
+    )
     submit = SubmitField("Save Budget")

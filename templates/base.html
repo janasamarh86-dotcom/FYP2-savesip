@@ -74,7 +74,9 @@
                (notifications / notification_count come from
                inject_notifications() in routes.py) -->
           <div class="dropdown">
+            <!-- data-bs-display="static": positioned by CSS (centred on phones) -->
             <button type="button" class="ss-icon-btn" data-bs-toggle="dropdown" aria-expanded="false"
+                    data-bs-display="static"
                     aria-label="Notifications{{ ' (' ~ notification_count ~ ' new)' if notification_count }}">
               <i class="bi bi-bell{{ '-fill' if notification_count }}"></i>
               {% if notification_count %}
@@ -278,6 +280,16 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"
           integrity="sha384-Yv5O+t3uE3hunW8uyrbpPW3iw6/5/Y7HitWJBLgqfMoA36NogMmy+8wWZMpn3HWc"
           crossorigin="anonymous"></script>
+
+  <script>
+    // Forms with a data-confirm message (e.g. Delete buttons) ask before submitting
+    document.addEventListener("submit", function (event) {
+      const message = event.target.dataset && event.target.dataset.confirm;
+      if (message && !window.confirm(message)) {
+        event.preventDefault();
+      }
+    });
+  </script>
 
   {% block scripts %}{% endblock %}
 </body>

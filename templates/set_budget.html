@@ -33,6 +33,9 @@
               <div class="col-5">{{ render_field(form.year) }}</div>
             </div>
 
+            {{ render_field(form.description, rows=2,
+                            placeholder="e.g. Cutting back on food delivery this month") }}
+
             <p class="small text-muted">
               <i class="bi bi-info-circle me-1"></i>If this category already has a budget for that
               month, saving will update it.
