@@ -12,6 +12,7 @@ import sys
 import time
 from datetime import timedelta
 
+from dotenv import load_dotenv
 from flask import Flask, flash, redirect, request, session, url_for
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager, current_user, logout_user
@@ -27,6 +28,11 @@ from flask_wtf.csrf import CSRFProtect
 if __name__ == "__main__":
     sys.modules.setdefault("app", sys.modules[__name__])
 
+# Load settings such as DATABASE_URL from the .env file next to this one.
+# Variables already set in the real environment (e.g. on a hosting
+# platform) take priority over .env.
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+
 
 # ---------------------------------------------------------------------------
 # App initialisation
@@ -34,7 +40,7 @@ if __name__ == "__main__":
 
 app = Flask(__name__, instance_relative_config=True)
 
-# Make sure the instance/ folder exists before the database or key file is
+# Make sure the instance/ folder exists before the secret key file is
 # written into it.
 os.makedirs(app.instance_path, exist_ok=True)
 
@@ -69,10 +75,27 @@ def _load_secret_key():
 
 app.config["SECRET_KEY"] = _load_secret_key()
 
-# SQLite database stored at instance/database.db
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(
-    app.instance_path, "database.db"
-)
+# PostgreSQL database hosted on Neon, read from DATABASE_URL (.env locally,
+# the platform's environment variables in deployment)
+database_url = os.environ.get("DATABASE_URL")
+if not database_url:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Add it to the .env file or the environment."
+    )
+# Some providers still give "postgres://" URLs, which SQLAlchemy no longer
+# accepts; it needs "postgresql://"
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+# Connect with psycopg2 (psycopg2-binary in requirements.txt). From
+# SQLAlchemy 2.1 a plain "postgresql://" URL means the newer psycopg 3
+# driver instead, so the driver is named explicitly.
+if database_url.startswith("postgresql://"):
+    database_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+# Neon closes idle connections (and suspends the database when unused), so
+# test each pooled connection before use instead of failing on a dead one
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # 30-minute inactivity timeout, enforced on the server by

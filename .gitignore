@@ -1,0 +1,6 @@
+# Secrets: the Neon database password lives in .env
+.env
+
+# Local Python environment and caches
+venv/
+__pycache__/
