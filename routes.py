@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from flask import Response, abort, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf.csrf import CSRFError
+from markupsafe import Markup
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
@@ -31,6 +32,8 @@ from forms import (
     NotificationSettingsForm,
     PlannedExpenseForm,
     RegistrationForm,
+    RequestResetForm,
+    ResetPasswordForm,
     local_today,
 )
 from models import (
@@ -423,6 +426,59 @@ def logout():
     session.clear()
     flash("You have been logged out.", "info")
     return redirect(url_for("login"))
+
+
+# ---------------------------------------------------------------------------
+# Forgot password
+# ---------------------------------------------------------------------------
+# SaveSip has no email service, so sending the reset email is simulated: the
+# link that would be emailed is shown in a message on the login page instead.
+
+RESET_SENT_MESSAGE = "If an account exists for that email, a password reset link has been sent to it."
+
+
+@app.route("/reset_request", methods=["GET", "POST"])
+def reset_request():
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+
+    form = RequestResetForm()
+    if form.validate_on_submit():
+        user = db.session.scalar(select(User).where(User.email == form.email.data.lower()))
+        if user:
+            reset_url = url_for("reset_password", token=user.get_reset_token())
+            # Markup lets the message contain a link; Markup.format escapes the URL
+            flash(Markup(
+                "{} <strong>For this demo</strong> (no real email is sent), "
+                '<a href="{}" class="alert-link">click here to reset your password</a>. '
+                "The link works once and expires in 30 minutes."
+            ).format(RESET_SENT_MESSAGE, reset_url), "info")
+        else:
+            flash(RESET_SENT_MESSAGE, "info")
+        return redirect(url_for("login"))
+
+    return render_template("reset_request.html", form=form)
+
+
+@app.route("/reset_password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+
+    user = User.verify_reset_token(token)
+    if user is None:
+        flash("That reset link is invalid, has expired or has already been used. "
+              "Please request a new one.", "warning")
+        return redirect(url_for("reset_request"))
+
+    form = ResetPasswordForm()
+    if form.validate_on_submit():
+        user.set_password(form.password.data)
+        db.session.commit()
+        flash("Your password has been reset. You can now log in with your new password.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("reset_password.html", form=form)
 
 
 # ---------------------------------------------------------------------------

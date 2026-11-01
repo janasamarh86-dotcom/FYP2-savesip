@@ -5,9 +5,12 @@ Defines the User, Income, Expense and Budget tables, the fixed option lists
 from the FYP 1 proposal, and the Flask-Login user loader.
 """
 
+import hashlib
 from datetime import datetime, timezone
 
+from flask import current_app
 from flask_login import UserMixin
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 from sqlalchemy import CheckConstraint, UniqueConstraint, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import validates
@@ -58,6 +61,10 @@ EXPENSE_TYPE_LABELS = {
     "Luxury": "Want",
     "Situational": "Unplanned",
 }
+
+
+# Password reset links stop working after this many seconds (30 minutes)
+RESET_TOKEN_MAX_AGE = 30 * 60
 
 
 def utcnow():
@@ -154,6 +161,41 @@ class User(db.Model, UserMixin):
     def check_password(self, password):
         """Return True if the plain-text password matches the stored hash."""
         return bcrypt.check_password_hash(self.password_hash, password)
+
+    # -- Password reset tokens ------------------------------------------------
+    # A token is signed with the app's SECRET_KEY by itsdangerous, so it cannot
+    # be forged or edited, and it expires after RESET_TOKEN_MAX_AGE. It also
+    # carries a fingerprint of the current password hash: once the password
+    # is changed the fingerprint no longer matches, so each link works once.
+
+    @staticmethod
+    def _reset_serializer():
+        return URLSafeTimedSerializer(current_app.config["SECRET_KEY"], salt="password-reset")
+
+    def _password_fingerprint(self):
+        # A hash of the bcrypt hash: the token is signed, not encrypted, so the
+        # password hash itself must never appear in it
+        return hashlib.sha256(self.password_hash.encode("utf-8")).hexdigest()[:16]
+
+    def get_reset_token(self):
+        """A secure, time-limited token for a password reset link."""
+        return self._reset_serializer().dumps(
+            {"user_id": self.id, "fingerprint": self._password_fingerprint()}
+        )
+
+    @staticmethod
+    def verify_reset_token(token):
+        """The User a reset token belongs to, or None if the token is invalid,
+        expired or already used."""
+        try:
+            data = User._reset_serializer().loads(token, max_age=RESET_TOKEN_MAX_AGE)
+            user = db.session.get(User, int(data["user_id"]))
+        except (BadSignature, KeyError, TypeError, ValueError):
+            # BadSignature also covers SignatureExpired (too old)
+            return None
+        if user is None or data.get("fingerprint") != user._password_fingerprint():
+            return None
+        return user
 
     def __repr__(self):
         return f"<User {self.username}>"

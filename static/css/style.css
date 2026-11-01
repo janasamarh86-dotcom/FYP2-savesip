@@ -444,6 +444,27 @@ h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
   box-shadow: var(--ss-shadow);
 }
 
+/* Icon at the top of the Forgot / Reset Password cards */
+.ss-auth-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 1.1rem;
+  background: var(--bs-primary-bg-subtle);
+  color: var(--ss-violet);
+  font-size: 1.75rem;
+}
+
+/* "Forgot Password?" under the login password field */
+.ss-forgot-link {
+  margin: -0.5rem 0 1rem;
+  text-align: right;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
 .ss-navbar .nav-link {
   color: rgba(255, 255, 255, 0.86);
   font-weight: 500;
@@ -819,32 +840,67 @@ main {
   color: #fff;
 }
 
+/* Closing quote on the home page */
+.ss-closing {
+  padding: 2.5rem 0 0.5rem;
+}
+
 .ss-quote {
-  max-width: 780px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.1rem;
+  max-width: 720px;
   margin: 0 auto;
-  padding: 1rem 1.5rem 0;
+  padding: 0 1rem;
   text-align: center;
+}
+
+/* Cup icon with a fine line on each side, centred over the text */
+.ss-quote-mark {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: min(280px, 100%);
+}
+
+.ss-quote-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #cfc8f6);
+}
+
+.ss-quote-line:last-child {
+  background: linear-gradient(90deg, #cfc8f6, transparent);
 }
 
 .ss-quote-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 58px;
-  height: 58px;
-  margin-bottom: 1.25rem;
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   background: var(--bs-primary-bg-subtle);
   color: var(--ss-violet);
-  font-size: 1.6rem;
+  font-size: 1.45rem;
+  line-height: 1;
+  box-shadow: 0 8px 20px -12px rgba(108, 92, 231, 0.6);
+}
+
+.ss-quote blockquote,
+.ss-quote blockquote p {
+  margin: 0;
 }
 
 .ss-quote blockquote p {
   font-family: var(--ss-font-serif);
   font-style: italic;
-  font-size: clamp(1.35rem, 1rem + 1.3vw, 1.9rem);
+  font-size: clamp(1.3rem, 1rem + 1.2vw, 1.8rem);
   line-height: 1.5;
   color: var(--ss-violet-deep);
+  text-wrap: balance;   /* even line lengths, so the centred text sits neatly */
 }
 
 /* ------------------------------------------------------------------------
@@ -1107,7 +1163,7 @@ main {
 }
 
 /* The user's own words, clearly highlighted */
-.ss-quote {
+.ss-note-quote {
   position: relative;
   margin: 0 0 0.85rem;
   padding: 0.9rem 1.1rem 0.95rem 3.1rem;
@@ -1116,7 +1172,7 @@ main {
   background: linear-gradient(120deg, var(--tip-tint) 0%, #ffffff 100%);
 }
 
-.ss-quote::before {
+.ss-note-quote::before {
   content: "\201C";
   position: absolute;
   top: -0.2rem;
@@ -1128,7 +1184,7 @@ main {
   opacity: 0.35;
 }
 
-.ss-quote-label {
+.ss-note-quote-label {
   margin-bottom: 0.15rem;
   font-size: 0.7rem;
   font-weight: 700;
@@ -1137,7 +1193,7 @@ main {
   color: var(--tip-color);
 }
 
-.ss-quote-text {
+.ss-note-quote-text {
   margin: 0;
   font-family: var(--ss-font-serif);
   font-size: 1.2rem;
@@ -1216,8 +1272,8 @@ main {
 @media (max-width: 575.98px) {
   .ss-note-card { padding: 1.1rem 1rem 0.9rem; }
   .ss-note-card-head .ss-tip-icon { display: none; }
-  .ss-quote { padding-left: 2.6rem; }
-  .ss-quote-text { font-size: 1.08rem; }
+  .ss-note-quote { padding-left: 2.6rem; }
+  .ss-note-quote-text { font-size: 1.08rem; }
 }
 
 /* ------------------------------------------------------------------------

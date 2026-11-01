@@ -24,6 +24,9 @@
 
             {{ render_field(form.email, autocomplete="email", placeholder="you@example.com") }}
             {{ render_field(form.password, autocomplete="current-password") }}
+            <div class="ss-forgot-link">
+              <a href="{{ url_for('reset_request') }}" class="link-success">Forgot Password?</a>
+            </div>
             {{ render_field(form.remember,
                             help="Stay signed in after closing your browser. You will still be logged out after 30 minutes of inactivity.") }}
 

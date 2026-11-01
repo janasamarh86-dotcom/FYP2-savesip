@@ -179,6 +179,27 @@ def _date_field():
     )
 
 
+def _new_password_field(label="Password"):
+    """Password rules for registering and for resetting a password."""
+    return PasswordField(
+        label,
+        validators=[
+            DataRequired(),
+            Length(min=8, message="Password must be at least 8 characters."),
+            MaxBytes(BCRYPT_MAX_BYTES, message="Password is too long (maximum 72 bytes)."),
+            Regexp(r"^(?=.*[A-Za-z])(?=.*\d).+$",
+                   message="Password must contain at least one letter and one number."),
+        ],
+    )
+
+
+def _confirm_password_field(label="Confirm Password"):
+    return PasswordField(
+        label,
+        validators=[DataRequired(), EqualTo("password", message="Passwords must match.")],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Authentication forms
 # ---------------------------------------------------------------------------
@@ -199,20 +220,8 @@ class RegistrationForm(FlaskForm):
         filters=[_strip],
         validators=[DataRequired(), Email(), Length(max=120)],
     )
-    password = PasswordField(
-        "Password",
-        validators=[
-            DataRequired(),
-            Length(min=8, message="Password must be at least 8 characters."),
-            MaxBytes(BCRYPT_MAX_BYTES, message="Password is too long (maximum 72 bytes)."),
-            Regexp(r"^(?=.*[A-Za-z])(?=.*\d).+$",
-                   message="Password must contain at least one letter and one number."),
-        ],
-    )
-    confirm_password = PasswordField(
-        "Confirm Password",
-        validators=[DataRequired(), EqualTo("password", message="Passwords must match.")],
-    )
+    password = _new_password_field()
+    confirm_password = _confirm_password_field()
     submit = SubmitField("Register")
 
     def validate_username(self, field):
@@ -244,6 +253,23 @@ class LoginForm(FlaskForm):
     # inactivity timeout still applies (see app.py).
     remember = BooleanField("Remember Me")
     submit = SubmitField("Log In")
+
+
+class RequestResetForm(FlaskForm):
+    """Forgot Password: the email of the account to reset."""
+    email = EmailField(
+        "Email",
+        filters=[_strip],
+        validators=[DataRequired(), Email(), Length(max=120)],
+    )
+    submit = SubmitField("Send Reset Link")
+
+
+class ResetPasswordForm(FlaskForm):
+    """Set a new password from a reset link (same rules as registration)."""
+    password = _new_password_field("New Password")
+    confirm_password = _confirm_password_field("Confirm New Password")
+    submit = SubmitField("Reset Password")
 
 
 # ---------------------------------------------------------------------------
