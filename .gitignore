@@ -1,6 +1,11 @@
 # Secrets: the Neon database password lives in .env
 .env
 
+# Session signing key (set SECRET_KEY in the environment when deployed) and
+# the old SQLite database, no longer used now that the app runs on Neon
+instance/secret_key
+instance/database.db
+
 # Local Python environment and caches
 venv/
 __pycache__/
