@@ -51,16 +51,25 @@
 
 
 {#
-  render_budget_progress(status)
+  render_budget_progress(status, next_url=None, highlight=False)
     One budget row: spent vs. limit with a coloured progress bar.
-    status is an item from budget_status() in routes.py.
+    status is an item from budget_status() in routes.py. With next_url,
+    Edit and Delete buttons are shown, returning to next_url afterwards.
+    highlight marks the budget currently being edited.
 #}
-{% macro render_budget_progress(status) %}
+{% macro render_budget_progress(status, next_url=None, highlight=False) %}
   {% set bar_class = "bg-danger" if status.over else ("bg-warning" if status.near_limit else "bg-success") %}
-  <div class="mb-3">
-    <div class="d-flex justify-content-between small mb-1">
+  <div class="mb-3{{ ' ss-budget-row' if next_url }}{{ ' is-editing' if highlight }}">
+    <div class="d-flex justify-content-between align-items-center gap-2 small mb-1">
       <span class="fw-semibold">{{ status.category }}</span>
-      <span class="text-muted">{{ status.spent|rm }} / {{ status.budget|rm }}</span>
+      <span class="d-flex align-items-center gap-2">
+        <span class="text-muted text-nowrap">{{ status.spent|rm }} / {{ status.budget|rm }}</span>
+        {% if next_url %}
+          {{ row_actions(url_for('edit_budget', budget_id=status.id, next=next_url),
+                         url_for('delete_budget', budget_id=status.id),
+                         status.category ~ " budget", next_url) }}
+        {% endif %}
+      </span>
     </div>
     <div class="progress" role="progressbar" style="height: 0.6rem;"
          aria-label="{{ status.category }} budget used"
@@ -136,13 +145,15 @@
 
 
 {#
-  planned_item(item, deletable=False)
+  planned_item(item, next_url=None, highlight=False)
     One upcoming planned expense. item comes from upcoming_planned() in
-    routes.py. Items due within 7 days are highlighted as reminders.
+    routes.py. Items due within 7 days are highlighted as reminders. With
+    next_url, Edit and Delete buttons are shown, returning to next_url
+    afterwards. highlight marks the plan currently being edited.
 #}
-{% macro planned_item(item, deletable=False) %}
+{% macro planned_item(item, next_url=None, highlight=False) %}
   {% set plan = item.plan %}
-  <div class="ss-plan-item{{ ' is-reminder' if item.is_reminder }}">
+  <div class="ss-plan-item{{ ' is-reminder' if item.is_reminder }}{{ ' is-editing' if highlight }}">
     <div class="ss-plan-date" aria-hidden="true">
       <span class="ss-plan-day">{{ plan.target_date.day }}</span>
       <span class="ss-plan-month">{{ plan.target_date.strftime("%b") }}</span>
@@ -162,14 +173,12 @@
         {% if item.is_reminder %}<i class="bi bi-bell-fill me-1"></i>{% endif %}{{ item.due_label }}
       </span>
     </div>
-    {% if deletable %}
-      <form action="{{ url_for('delete_planned_expense', plan_id=plan.id) }}" method="post" class="m-0 flex-shrink-0">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-sm btn-outline-secondary ss-plan-delete"
-                aria-label="Remove {{ plan.title }}" title="Remove">
-          <i class="bi bi-trash3"></i>
-        </button>
-      </form>
+    {% if next_url %}
+      <div class="flex-shrink-0">
+        {{ row_actions(url_for('edit_planned', plan_id=plan.id, next=next_url),
+                       url_for('delete_planned', plan_id=plan.id),
+                       "planned expense", next_url) }}
+      </div>
     {% endif %}
   </div>
 {% endmacro %}

@@ -4,6 +4,7 @@
 {% block title %}Planned Expenses{% endblock %}
 
 {% block content %}
+{% set back_url = cancel_url if editing else url_for('add_planned_expense') %}
 <div class="container">
   <div class="row g-4">
 
@@ -15,15 +16,15 @@
           <div class="d-flex align-items-center mb-4">
             <div class="rounded-3 bg-primary bg-opacity-10 text-primary fs-3 d-flex align-items-center justify-content-center me-3"
                  style="width: 3.25rem; height: 3.25rem;">
-              <i class="bi bi-calendar-plus"></i>
+              <i class="bi bi-{{ 'pencil-square' if editing else 'calendar-plus' }}"></i>
             </div>
             <div>
-              <h1 class="h4 fw-bold mb-0">Plan an Expense</h1>
-              <p class="text-muted small mb-0">Get a reminder before a big cost is due.</p>
+              <h1 class="h4 fw-bold mb-0">{{ "Edit Planned Expense" if editing else "Plan an Expense" }}</h1>
+              <p class="text-muted small mb-0">{{ "Update the details of this planned cost." if editing else "Get a reminder before a big cost is due." }}</p>
             </div>
           </div>
 
-          <form method="post" action="{{ url_for('add_planned_expense') }}">
+          <form method="post" action="{{ form_action or url_for('add_planned_expense') }}">
             {{ form.hidden_tag() }}
 
             {{ render_field(form.title, placeholder="e.g. Next semester's fees") }}
@@ -41,7 +42,14 @@
               notifications from 7 days before the due date.
             </p>
 
-            {{ form.submit(class="btn btn-success w-100 py-2") }}
+            {% if editing %}
+              <div class="d-flex gap-2">
+                {{ form.submit(class="btn btn-success flex-grow-1 py-2", value="Save Changes") }}
+                <a href="{{ cancel_url }}" class="btn btn-outline-secondary py-2">Cancel</a>
+              </div>
+            {% else %}
+              {{ form.submit(class="btn btn-success w-100 py-2") }}
+            {% endif %}
           </form>
 
         </div>
@@ -62,7 +70,7 @@
           {% if planned %}
             <div class="ss-plan-list">
               {% for item in planned %}
-                {{ planned_item(item, deletable=True) }}
+                {{ planned_item(item, next_url=back_url, highlight=(item.plan.id == editing_id)) }}
               {% endfor %}
             </div>
           {% else %}

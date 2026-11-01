@@ -112,6 +112,38 @@ def requested_period():
     return year, month
 
 
+def requested_range():
+    """Read a custom date range ?from=YYYY-MM-DD&to=YYYY-MM-DD from the URL.
+
+    Returns (first day, last day), both included, or None when no range was
+    asked for. An incomplete or impossible range shows a warning and
+    returns None, so the page falls back to the month view.
+    """
+    raw_from, raw_to = request.args.get("from"), request.args.get("to")
+    if not raw_from and not raw_to:
+        return None
+    try:
+        first, last = date.fromisoformat(raw_from), date.fromisoformat(raw_to)
+    except (TypeError, ValueError):
+        flash("Please choose both a From date and a To date.", "warning")
+        return None
+    if first > last:
+        flash("The From date must be on or before the To date.", "warning")
+        return None
+    if first.year < 2000 or last.year > 2100:
+        flash("Please choose dates between the years 2000 and 2100.", "warning")
+        return None
+    return first, last
+
+
+def format_range(first, last):
+    """A date range for headings, e.g. "25 Oct – 25 Nov 2026"."""
+    if first == last:
+        return first.strftime("%d %b %Y")
+    first_format = "%d %b" if first.year == last.year else "%d %b %Y"
+    return f"{first.strftime(first_format)} – {last.strftime('%d %b %Y')}"
+
+
 def to_money(value):
     """Convert a database total (Decimal, float or None) to a 2dp Decimal."""
     if value is None:
@@ -193,6 +225,7 @@ def budget_status(year, month, spent_by_category):
         # a RM100.00 budget always counts as 80%
         reached_warning = spent * 100 >= budget.amount * BUDGET_WARNING_PERCENT
         status.append({
+            "id": budget.id,
             "category": budget.category,
             "budget": budget.amount,
             "spent": spent,
@@ -283,11 +316,21 @@ def index():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    # The month being viewed (?month=&year=), the current month by default.
-    # Everything below except Planned Expenses is for this month only.
+    # The period being viewed: a custom date range (?from=&to=, e.g. income
+    # received on 25 Oct that lasts until 25 Nov), otherwise a month
+    # (?month=&year=, the current month by default). Everything below except
+    # Planned Expenses covers this period only; start is included, end is not.
     today = local_today()
-    year, month = requested_period()
-    start, end = month_bounds(year, month)
+    custom_range = requested_range()
+    if custom_range:
+        first, last = custom_range
+        start, end = first, last + timedelta(days=1)
+        year, month = last.year, last.month  # the month selector shows the To month
+        period_label = format_range(first, last)
+    else:
+        year, month = requested_period()
+        start, end = month_bounds(year, month)
+        period_label = f"{calendar.month_name[month]} {year}"
 
     income_by_source = totals_by(Income, Income.source, start, end, INCOME_SOURCES)
     total_income = sum(income_by_source.values(), ZERO)
@@ -303,7 +346,7 @@ def dashboard():
     }
     social_media_total = sum(social_media_by_platform.values(), ZERO)
 
-    # Every income and expense in the selected month, newest first
+    # Every income and expense in the period, newest first
     incomes = incomes_for(start, end)
     expenses = expenses_for(start, end)
 
@@ -315,7 +358,12 @@ def dashboard():
         month=month,
         month_name=calendar.month_name[month],
         year=year,
-        is_current_month=(year, month) == (today.year, today.month),
+        period_label=period_label,
+        is_range=custom_range is not None,
+        # The custom range inputs start on the period being shown
+        range_from=start.isoformat(),
+        range_to=(end - timedelta(days=1)).isoformat(),
+        is_current_month=custom_range is None and (year, month) == (today.year, today.month),
         prev_period={"year": prev_year, "month": prev_month},
         next_period={"year": next_year, "month": next_month},
         total_income=total_income,
@@ -335,8 +383,9 @@ def dashboard():
                 {"Spent": total_expenses, "Left": max(balance, ZERO)}
             ),
         },
-        budget_status=budget_status(year, month, spent_by_category),
-        # The 5 most recent records of the month being viewed
+        # Budgets are monthly, so they are only compared in the month view
+        budget_status=[] if custom_range else budget_status(year, month, spent_by_category),
+        # The 5 most recent records of the period being viewed
         recent_expenses=expenses[:5],
         recent_incomes=incomes[:5],
         category_chart=chart_series(spent_by_category),
@@ -682,9 +731,13 @@ def set_budget():
         if year in BUDGET_YEARS:
             form.year.data = year
 
+    return _budget_page(form, year, month)
+
+
+def _budget_page(form, year, month, **extra):
+    """The Set Budget page: the form, plus the budgets for year/month."""
     start, end = month_bounds(year, month)
     spent_by_category = totals_by(Expense, Expense.category, start, end, CATEGORIES)
-
     return render_template(
         "set_budget.html",
         form=form,
@@ -692,7 +745,80 @@ def set_budget():
         month_name=calendar.month_name[month],
         year=year,
         budget_status=budget_status(year, month, spent_by_category),
+        **extra,
     )
+
+
+def _budget_back_url(budget):
+    """After editing or deleting a budget: the page the user came from, else
+    the Set Budget page for that budget's month."""
+    return safe_next_url(request.values.get("next")) or url_for(
+        "set_budget", month=budget.month, year=budget.year
+    )
+
+
+@app.route("/edit_budget/<int:budget_id>", methods=["GET", "POST"])
+@login_required
+def edit_budget(budget_id):
+    budget = _owned_or_404(Budget, budget_id)
+    form = BudgetForm(obj=budget)  # pre-fills the form on GET
+
+    if form.validate_on_submit():
+        category, month, year = form.category.data, form.month.data, form.year.data
+        # One budget per category per month: moving this one onto a category
+        # and month that already has a budget would clash with it
+        clash = db.session.scalar(
+            select(Budget).where(
+                Budget.user_id == current_user.id,
+                Budget.category == category,
+                Budget.month == month,
+                Budget.year == year,
+                Budget.id != budget.id,
+            )
+        )
+        if clash:
+            form.category.errors.append(
+                f"You already have a {category} budget for {calendar.month_name[month]} "
+                f"{year}. Edit that one instead."
+            )
+        else:
+            budget.category = category
+            budget.amount = form.amount.data
+            budget.month = month
+            budget.year = year
+            budget.description = form.description.data or None
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash("That budget was just changed. Please try again.", "warning")
+            else:
+                flash(f"{category} budget for {calendar.month_name[month]} {year} "
+                      f"updated to RM{budget.amount:,.2f}.", "success")
+            return redirect(_budget_back_url(budget))
+
+    return _budget_page(
+        form,
+        budget.year,
+        budget.month,
+        editing=True,
+        editing_id=budget.id,
+        form_action=url_for("edit_budget", budget_id=budget.id, next=request.args.get("next")),
+        cancel_url=_budget_back_url(budget),
+    )
+
+
+@app.route("/delete_budget/<int:budget_id>", methods=["POST"])
+@login_required
+def delete_budget(budget_id):
+    budget = _owned_or_404(Budget, budget_id)
+    back_url = _budget_back_url(budget)
+    message = (f"Deleted the {budget.category} budget for "
+               f"{calendar.month_name[budget.month]} {budget.year}.")
+    db.session.delete(budget)
+    db.session.commit()
+    flash(message, "info")
+    return redirect(back_url)
 
 
 # ---------------------------------------------------------------------------
@@ -887,6 +1013,11 @@ def add_planned_expense():
               f"(RM{plan.amount:,.2f}).", "success")
         return redirect(url_for("dashboard"))
 
+    return _planned_page(form)
+
+
+def _planned_page(form, **extra):
+    """The Planned Expenses page: the form, plus every upcoming plan."""
     planned = upcoming_planned()
     return render_template(
         "planned_expense.html",
@@ -894,19 +1025,50 @@ def add_planned_expense():
         planned=planned,
         planned_total=sum((item["plan"].amount for item in planned), ZERO),
         today=local_today().isoformat(),
+        **extra,
     )
 
 
-@app.route("/planned_expense/<int:plan_id>/delete", methods=["POST"])
+def _planned_back_url():
+    """After editing or deleting a plan: the page the user came from, else the
+    Planned Expenses page."""
+    return safe_next_url(request.values.get("next")) or url_for("add_planned_expense")
+
+
+@app.route("/edit_planned/<int:plan_id>", methods=["GET", "POST"])
 @login_required
-def delete_planned_expense(plan_id):
-    plan = db.session.get(PlannedExpense, plan_id)
-    if plan is None or plan.user_id != current_user.id:
-        abort(404)
+def edit_planned(plan_id):
+    plan = _owned_or_404(PlannedExpense, plan_id)
+    form = PlannedExpenseForm(obj=plan)  # pre-fills the form on GET
+    if form.validate_on_submit():
+        plan.title = form.title.data
+        plan.amount = form.amount.data
+        plan.category = form.category.data
+        plan.target_date = form.target_date.data
+        plan.description = form.description.data or None
+        db.session.commit()
+        flash(f'Updated "{plan.title}": {plan.target_date.strftime("%d %b %Y")} '
+              f"(RM{plan.amount:,.2f}).", "success")
+        return redirect(_planned_back_url())
+
+    return _planned_page(
+        form,
+        editing=True,
+        editing_id=plan.id,
+        form_action=url_for("edit_planned", plan_id=plan.id, next=request.args.get("next")),
+        cancel_url=_planned_back_url(),
+    )
+
+
+@app.route("/delete_planned/<int:plan_id>", methods=["POST"])
+@login_required
+def delete_planned(plan_id):
+    plan = _owned_or_404(PlannedExpense, plan_id)
+    message = f'Removed the planned expense "{plan.title}".'
     db.session.delete(plan)
     db.session.commit()
-    flash(f'Removed the planned expense "{plan.title}".', "info")
-    return redirect(url_for("add_planned_expense"))
+    flash(message, "info")
+    return redirect(_planned_back_url())
 
 
 # ---------------------------------------------------------------------------

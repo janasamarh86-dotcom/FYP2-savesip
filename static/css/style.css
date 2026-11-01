@@ -1490,8 +1490,64 @@ main {
   color: #b45309;
 }
 
-.ss-plan-delete {
-  border-radius: 0.6rem;
+/* The budget or planned expense currently open in the Edit form */
+.ss-plan-item.is-editing,
+.ss-budget-row.is-editing {
+  outline: 2px solid var(--ss-violet);
+  outline-offset: 3px;
+  border-radius: 0.75rem;
+}
+
+/* ------------------------------------------------------------------------
+ * Dashboard period bar: month selector and custom date range
+ * --------------------------------------------------------------------- */
+.ss-period-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.ss-period-group {
+  padding: 0.6rem 0.75rem 0.75rem;
+  border: 1px solid #e4e0f6;
+  border-radius: 0.9rem;
+  background: #fff;
+}
+
+/* The group whose period is on screen */
+.ss-period-group.is-active {
+  border-color: var(--ss-violet);
+  box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.12);
+}
+
+.ss-period-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ss-muted);
+}
+
+.ss-period-group.is-active .ss-period-label {
+  color: var(--ss-violet-dark);
+}
+
+.ss-date-input {
+  width: 10.5rem;
+}
+
+@media (max-width: 575.98px) {
+  .ss-period-group {
+    width: 100%;
+  }
+
+  .ss-date-input {
+    width: auto;
+    flex: 1 1 8.5rem;
+  }
 }
 
 .ss-reminder-badge {

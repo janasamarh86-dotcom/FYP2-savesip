@@ -4,6 +4,8 @@
 {% block title %}Set Budget{% endblock %}
 
 {% block content %}
+{# Edit/Delete return here, to the month being viewed #}
+{% set back_url = cancel_url if editing else request.full_path.rstrip('?') %}
 <div class="container">
   <div class="row g-4">
 
@@ -14,15 +16,15 @@
 
           <div class="d-flex align-items-center mb-4">
             <div class="ss-page-icon me-3" aria-hidden="true">
-              <i class="bi bi-calculator"></i>
+              <i class="bi bi-{{ 'pencil-square' if editing else 'calculator' }}"></i>
             </div>
             <div>
-              <h1 class="h4 fw-bold mb-0">Set Budget</h1>
-              <p class="text-muted small mb-0">Choose a spending limit for a category.</p>
+              <h1 class="h4 fw-bold mb-0">{{ "Edit Budget" if editing else "Set Budget" }}</h1>
+              <p class="text-muted small mb-0">{{ "Change this budget's category, limit or month." if editing else "Choose a spending limit for a category." }}</p>
             </div>
           </div>
 
-          <form method="post" action="{{ url_for('set_budget') }}">
+          <form method="post" action="{{ form_action or url_for('set_budget') }}">
             {{ form.hidden_tag() }}
 
             {{ render_field(form.category) }}
@@ -36,12 +38,19 @@
             {{ render_field(form.description, rows=2,
                             placeholder="e.g. Cutting back on food delivery this month") }}
 
-            <p class="small text-muted">
-              <i class="bi bi-info-circle me-1"></i>If this category already has a budget for that
-              month, saving will update it.
-            </p>
+            {% if editing %}
+              <div class="d-flex gap-2">
+                {{ form.submit(class="btn btn-success flex-grow-1 py-2", value="Save Changes") }}
+                <a href="{{ cancel_url }}" class="btn btn-outline-secondary py-2">Cancel</a>
+              </div>
+            {% else %}
+              <p class="small text-muted">
+                <i class="bi bi-info-circle me-1"></i>If this category already has a budget for that
+                month, saving will update it.
+              </p>
 
-            {{ form.submit(class="btn btn-success w-100 py-2") }}
+              {{ form.submit(class="btn btn-success w-100 py-2") }}
+            {% endif %}
           </form>
 
         </div>
@@ -78,7 +87,7 @@
               <span>Spent in these categories: <strong>{{ total_spent|rm }}</strong></span>
             </div>
             {% for status in budget_status %}
-              {{ render_budget_progress(status) }}
+              {{ render_budget_progress(status, next_url=back_url, highlight=(status.id == editing_id)) }}
             {% endfor %}
           {% else %}
             <div class="text-center text-muted py-5">
