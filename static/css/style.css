@@ -991,40 +991,13 @@ main {
   margin-top: 0.4rem;
 }
 
-/* Spending Context panel */
+/* "How SaveSip reads your notes" panel */
 .ss-context-panel {
   padding: 1.25rem;
   border-radius: 1rem;
   background: #fff;
   box-shadow: var(--ss-shadow);
 }
-
-.ss-note {
-  padding: 0.85rem 0;
-  border-top: 1px solid #f0eef7;
-}
-
-.ss-note-quote {
-  margin: 0.55rem 0;
-  padding: 0.5rem 0.75rem;
-  border-left: 3px solid #cfc8f6;
-  border-radius: 0 0.5rem 0.5rem 0;
-  background: #faf9ff;
-  font-size: 0.88rem;
-  font-style: italic;
-  color: var(--ss-ink);
-  overflow-wrap: anywhere;
-}
-
-.ss-note-verdict {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-}
-
-.ss-note-verdict.is-ok      { color: #047857; }
-.ss-note-verdict.is-flagged { color: #b45309; }
 
 .ss-note-empty {
   display: flex;
@@ -1050,6 +1023,270 @@ main {
   background: #fff7ed;
   color: #9a3412;
   font-size: 0.85rem;
+}
+
+/* Section headings ("From your notes", "Your month at a glance") */
+.ss-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.ss-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.ss-section-title .bi {
+  color: var(--ss-violet);
+}
+
+.ss-section-count {
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: var(--bs-primary-bg-subtle);
+  color: var(--ss-violet-dark);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Note cards: one per expense with a note, with the note as a pull-quote */
+.ss-note-card {
+  position: relative;
+  margin-bottom: 1rem;
+  padding: 1.25rem 1.35rem 1rem;
+  border: 1px solid #eeecf6;
+  border-radius: 1.1rem;
+  background: #fff;
+  box-shadow: var(--ss-shadow);
+  overflow: hidden;
+}
+
+/* Thin accent along the top in the card's colour */
+.ss-note-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--tip-color), color-mix(in srgb, var(--tip-color) 35%, #ffffff));
+}
+
+.ss-note-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+}
+
+.ss-note-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--ss-muted);
+}
+
+.ss-note-card-amount {
+  flex-shrink: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ss-ink);
+}
+
+.ss-note-card-lead {
+  margin: 0.9rem 0 0.6rem;
+  color: #4b4763;
+}
+
+/* The user's own words, clearly highlighted */
+.ss-quote {
+  position: relative;
+  margin: 0 0 0.85rem;
+  padding: 0.9rem 1.1rem 0.95rem 3.1rem;
+  border-left: 4px solid var(--tip-color);
+  border-radius: 0 0.9rem 0.9rem 0;
+  background: linear-gradient(120deg, var(--tip-tint) 0%, #ffffff 100%);
+}
+
+.ss-quote::before {
+  content: "\201C";
+  position: absolute;
+  top: -0.2rem;
+  left: 0.75rem;
+  font-family: var(--ss-font-serif);
+  font-size: 3.4rem;
+  line-height: 1;
+  color: var(--tip-color);
+  opacity: 0.35;
+}
+
+.ss-quote-label {
+  margin-bottom: 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tip-color);
+}
+
+.ss-quote-text {
+  margin: 0;
+  font-family: var(--ss-font-serif);
+  font-size: 1.2rem;
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--ss-ink);
+  overflow-wrap: anywhere;
+}
+
+.ss-note-card-verdict {
+  margin-bottom: 0.85rem;
+  font-weight: 500;
+  color: var(--ss-ink);
+  line-height: 1.6;
+}
+
+.ss-note-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #f0eef7;
+}
+
+.ss-outcome {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.ss-outcome.is-ok      { background: #ecfdf5; color: #047857; }
+.ss-outcome.is-flagged { background: #fffbeb; color: #b45309; }
+
+/* "How SaveSip reads your notes" panel */
+.ss-reason {
+  display: flex;
+  gap: 0.7rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid #f0eef7;
+}
+
+.ss-reason-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.6rem;
+  background: #f4f1ff;
+  color: var(--ss-violet);
+}
+
+.ss-reason-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.2rem;
+}
+
+.ss-reason-words span {
+  padding: 0.05rem 0.45rem;
+  border-radius: 0.4rem;
+  background: #f6f5fd;
+  font-size: 0.72rem;
+  color: var(--ss-muted);
+}
+
+@media (max-width: 575.98px) {
+  .ss-note-card { padding: 1.1rem 1rem 0.9rem; }
+  .ss-note-card-head .ss-tip-icon { display: none; }
+  .ss-quote { padding-left: 2.6rem; }
+  .ss-quote-text { font-size: 1.08rem; }
+}
+
+/* ------------------------------------------------------------------------
+ * Dashboard summary donuts
+ * --------------------------------------------------------------------- */
+.ss-donut {
+  position: relative;
+  flex-shrink: 0;
+  width: 76px;
+  height: 76px;
+}
+
+.ss-donut-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  pointer-events: none;
+}
+
+.ss-donut-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--ss-muted);
+}
+
+.ss-donut-key span {
+  white-space: nowrap;
+}
+
+.ss-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.3rem;
+  border-radius: 50%;
+  vertical-align: 0.05em;
+}
+
+/* Same colours as NAMED_COLORS in charts.js */
+.ss-dot-essential { background: #14b8a6; }
+.ss-dot-want      { background: #f59e42; }
+.ss-dot-unplanned { background: #4f46e5; }
+.ss-dot-spent     { background: #e5484d; }
+.ss-dot-left      { background: #6c5ce7; }
+
+/* Tooltip for the small donuts (see pageTooltip() in charts.js) */
+.ss-chart-tooltip {
+  position: fixed;
+  z-index: 1080;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.5rem;
+  background: var(--ss-ink);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(14px, -50%);
+  transition: opacity 0.12s ease;
+}
+
+.ss-chart-tooltip.is-visible {
+  opacity: 1;
 }
 
 .ss-theme-option {
@@ -1226,6 +1463,7 @@ main {
 .ss-platform-tiktok      { background: #374151; color: #f9fafb; }   /* dark grey */
 .ss-platform-instagram   { background: #fce7f3; color: #9d174d; }   /* soft pink */
 .ss-platform-shopee-live { background: #ffe4d6; color: #c2410c; }   /* soft orange */
+.ss-platform-other       { background: #e0f2fe; color: #075985; }   /* soft sky blue */
 
 /* ------------------------------------------------------------------------
  * Notification bell

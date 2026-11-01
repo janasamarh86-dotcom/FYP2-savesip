@@ -181,13 +181,13 @@
     social media platform (if any) influenced it.
 #}
 {% macro expense_badges(expense) %}
-  {% set platform_icons = {"TikTok": "tiktok", "Instagram": "instagram", "Shopee Live": "broadcast"} %}
+  {% set platform_icons = {"TikTok": "tiktok", "Instagram": "instagram", "Shopee Live": "broadcast", "Other": "globe2"} %}
   {% set info = EXPENSE_TYPE_META[expense.expense_type] %}
   <span class="badge rounded-pill ss-type-badge ss-type-badge-{{ info.key }}">{{ expense.type_label }}</span>
   {% if expense.is_social_media_influenced %}
     {% set platform_key = expense.social_media_influence|lower|replace(" ", "-") %}
     <span class="badge rounded-pill ss-platform-badge ss-platform-{{ platform_key }}">
-      <i class="bi bi-{{ platform_icons.get(expense.social_media_influence, 'phone') }} me-1" aria-hidden="true"></i>{{ expense.social_media_influence }}
+      <i class="bi bi-{{ platform_icons.get(expense.social_media_influence, 'phone') }} me-1" aria-hidden="true"></i>{{ "Other platform" if expense.social_media_influence == "Other" else expense.social_media_influence }}
     </span>
   {% endif %}
 {% endmacro %}

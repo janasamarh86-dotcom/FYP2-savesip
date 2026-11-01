@@ -39,7 +39,7 @@
             {{ form.hidden_tag() }}
             {% set notification_options = [
               (form.notify_budget, "When you reach 80% of a budget or go over it."),
-              (form.notify_social, "When wants are influenced by TikTok, Instagram or Shopee Live."),
+              (form.notify_social, "When wants are influenced by TikTok, Instagram, Shopee Live or another platform."),
               (form.notify_monthly, "A reminder to review your report in the last week of each month."),
             ] %}
             {% for field, description in notification_options %}

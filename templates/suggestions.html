@@ -11,6 +11,13 @@
   "context": {"icon": "chat-quote", "label": "Your context"},
   "reminder": {"icon": "calendar-event", "label": "Reminder"},
 } %}
+{# Icon for each verdict on a note card (labels come from _note_card() in routes.py) #}
+{% set note_icons = {
+  "Planned gift": "gift", "Health": "heart-pulse", "Emergency": "life-preserver",
+  "Study": "book", "Work": "briefcase", "Clear purpose": "check2-circle",
+  "Essential": "shield-check", "Unplanned": "lightning-charge",
+  "No clear reason": "exclamation-triangle",
+} %}
 {% set hidden_tips = [] %}
 {% if not current_user.notify_social %}{% set _ = hidden_tips.append("social media warnings") %}{% endif %}
 {% if not current_user.notify_budget %}{% set _ = hidden_tips.append("budget alerts") %}{% endif %}
@@ -45,7 +52,7 @@
       ("receipt", "Expenses", expense_count ~ ""),
       ("wallet2", "Spent", total_spent|rm),
       ("phone-vibrate", "Impulse buys", impulse_total|rm),
-      ("chat-quote", "Notes read", context_notes|length ~ ""),
+      ("chat-quote", "Notes read", note_cards|length ~ ""),
     ] %}
     <div class="row g-3 mb-4">
       {% for icon, label, value in stats %}
@@ -62,92 +69,148 @@
     </div>
 
     <div class="row g-4">
-
-      <!-- Suggestion cards -->
       <div class="col-xl-8">
-        {% for suggestion in suggestions %}
-          {% set style = styles.get(suggestion.level, styles.info) %}
-          <article class="ss-tip ss-tip-{{ suggestion.level }}">
-            <div class="ss-tip-icon ss-tip-{{ suggestion.level }}" aria-hidden="true">
-              <i class="bi bi-{{ style.icon }}"></i>
-            </div>
-            <div class="flex-grow-1 min-w-0">
-              <span class="ss-tip-chip">{{ style.label }}</span>
-              <h2 class="ss-tip-title">{{ suggestion.title }}</h2>
-              <p class="ss-tip-message">{{ suggestion.message }}</p>
 
-              {% if suggestion.url %}
-                <a href="{{ suggestion.url }}" class="ss-tip-link">Open <i class="bi bi-arrow-right"></i></a>
-              {% endif %}
-
-              {% if suggestion.expenses and suggestion.level != "context" %}
-                <details class="ss-tip-details">
-                  <summary>
-                    Show {{ suggestion.expenses|length }} related purchase{{ "s" if suggestion.expenses|length != 1 }}
-                  </summary>
-                  <ul class="list-unstyled mb-0">
-                    {% for expense in suggestion.expenses %}
-                      <li>
-                        <span>
-                          {{ expense.date.strftime("%d %b") }} &middot; {{ expense.category }}
-                          {% if expense.description %}&middot; <em>{{ expense.description }}</em>{% endif %}
-                        </span>
-                        <span class="fw-semibold text-nowrap">{{ expense.amount|rm }}</span>
-                      </li>
-                    {% endfor %}
-                  </ul>
-                </details>
-              {% endif %}
-            </div>
-          </article>
-        {% else %}
-          <div class="ss-tip">
-            <div class="ss-tip-icon ss-tip-positive" aria-hidden="true"><i class="bi bi-check2-circle"></i></div>
-            <div>
-              <h2 class="ss-tip-title">Nothing to flag right now</h2>
-              <p class="ss-tip-message">Keep logging your spending and new tips will appear here.</p>
-            </div>
+        <!-- From your notes: one card per expense with a note, quoting it exactly -->
+        <section class="mb-4" aria-labelledby="notes-heading">
+          <div class="ss-section-head">
+            <h2 class="ss-section-title" id="notes-heading">
+              <i class="bi bi-chat-quote-fill"></i>From your notes
+            </h2>
+            <span class="ss-section-count">{{ note_cards|length }} note{{ "s" if note_cards|length != 1 }} read</span>
           </div>
-        {% endfor %}
-      </div>
 
-      <!-- Spending context: the notes SaveSip read -->
-      <div class="col-xl-4">
-        <aside class="ss-context-panel">
-          <div class="d-flex align-items-center gap-2 mb-1">
-            <i class="bi bi-chat-quote text-primary"></i>
-            <h2 class="h6 fw-bold mb-0">Spending Context</h2>
-          </div>
-          <p class="small text-muted mb-3">
-            Notes from your wants and social-media purchases, and how SaveSip treated them.
-          </p>
-
-          {% for note in context_notes %}
-            {% set expense = note.expense %}
-            <div class="ss-note">
-              <div class="d-flex justify-content-between align-items-start gap-2">
-                <div class="small">
-                  <span class="fw-semibold">{{ expense.category }}</span>
-                  <span class="text-muted">&middot; {{ expense.date.strftime("%d %b") }}</span>
+          {% for card in note_cards %}
+            {% set expense = card.expense %}
+            <article class="ss-note-card ss-tip-{{ card.level }}">
+              <header class="ss-note-card-head">
+                <div class="ss-tip-icon ss-tip-{{ card.level }}" aria-hidden="true">
+                  <i class="bi bi-{{ note_icons.get(card.label, styles[card.level].icon) }}"></i>
                 </div>
-                <span class="fw-bold small text-nowrap">{{ expense.amount|rm }}</span>
-              </div>
-              <div class="mt-1">{{ expense_badges(expense) }}</div>
-              <blockquote class="ss-note-quote">&ldquo;{{ expense.description }}&rdquo;</blockquote>
-              <div class="ss-note-verdict {{ 'is-flagged' if note.flagged else 'is-ok' }}">
-                <i class="bi bi-{{ 'exclamation-circle' if note.flagged else 'check-circle' }}"></i>
-                <span><strong>{{ note.label }}</strong> &middot; {{ note.outcome }}</span>
-              </div>
-            </div>
+                <div class="flex-grow-1 min-w-0">
+                  <span class="ss-tip-chip">{{ card.label }}</span>
+                  <h3 class="ss-tip-title mb-1">{{ card.title }}</h3>
+                  <div class="ss-note-card-meta">
+                    <span>{{ expense.date.strftime("%d %b %Y") }} &middot; {{ expense.category }}</span>
+                    {{ expense_badges(expense) }}
+                  </div>
+                </div>
+                <div class="ss-note-card-amount">{{ expense.amount|rm }}</div>
+              </header>
+
+              <p class="ss-note-card-lead">{{ card.lead }}</p>
+
+              <figure class="ss-quote">
+                <figcaption class="ss-quote-label">Your note says</figcaption>
+                <blockquote class="ss-quote-text">&ldquo;{{ card.note }}&rdquo;</blockquote>
+              </figure>
+
+              <p class="ss-note-card-verdict">{{ card.verdict }}</p>
+
+              <footer class="ss-note-card-foot">
+                <span class="ss-outcome {{ 'is-flagged' if card.flagged else 'is-ok' }}">
+                  <i class="bi bi-{{ 'exclamation-circle-fill' if card.flagged else 'check-circle-fill' }}"></i>{{ card.outcome }}
+                </span>
+                <a href="{{ url_for('edit_expense', expense_id=expense.id, next=url_for('suggestions')) }}" class="ss-tip-link mt-0">
+                  <i class="bi bi-pencil me-1"></i>Edit note
+                </a>
+              </footer>
+            </article>
           {% else %}
             <div class="ss-note-empty">
               <i class="bi bi-pencil-square"></i>
               <p class="mb-0">
-                No notes to read yet. When you log a want, add a short note like
-                <em>&ldquo;gift for mom&rdquo;</em> or <em>&ldquo;study cafe&rdquo;</em> and SaveSip will take it into account.
+                None of this month's expenses have a note yet. When you log one, add a short note like
+                <em>&ldquo;Bought a gift for my mom&rdquo;</em> or <em>&ldquo;study cafe before exams&rdquo;</em>
+                and SaveSip will quote it here and take it into account.
               </p>
             </div>
           {% endfor %}
+        </section>
+
+        <!-- Overall tips for the month -->
+        <section aria-labelledby="tips-heading">
+          <div class="ss-section-head">
+            <h2 class="ss-section-title" id="tips-heading">
+              <i class="bi bi-lightbulb-fill"></i>Your month at a glance
+            </h2>
+          </div>
+
+          {% for suggestion in suggestions %}
+            {% set style = styles.get(suggestion.level, styles.info) %}
+            <article class="ss-tip ss-tip-{{ suggestion.level }}">
+              <div class="ss-tip-icon ss-tip-{{ suggestion.level }}" aria-hidden="true">
+                <i class="bi bi-{{ 'calculator' if suggestion.kind else style.icon }}"></i>
+              </div>
+              <div class="flex-grow-1 min-w-0">
+                <span class="ss-tip-chip">{{ "Budget alert" if suggestion.kind else style.label }}</span>
+                <h3 class="ss-tip-title">{{ suggestion.title }}</h3>
+                <p class="ss-tip-message">{{ suggestion.message }}</p>
+
+                {% if suggestion.url %}
+                  <a href="{{ suggestion.url }}" class="ss-tip-link">Open <i class="bi bi-arrow-right"></i></a>
+                {% endif %}
+
+                {% if suggestion.expenses %}
+                  <details class="ss-tip-details">
+                    <summary>
+                      Show {{ suggestion.expenses|length }} related purchase{{ "s" if suggestion.expenses|length != 1 }}
+                    </summary>
+                    <ul class="list-unstyled mb-0">
+                      {% for expense in suggestion.expenses %}
+                        <li>
+                          <span>
+                            {{ expense.date.strftime("%d %b") }} &middot; {{ expense.category }}
+                            {% if expense.description %}&middot; <em>&ldquo;{{ expense.description }}&rdquo;</em>{% endif %}
+                          </span>
+                          <span class="fw-semibold text-nowrap">{{ expense.amount|rm }}</span>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </details>
+                {% endif %}
+              </div>
+            </article>
+          {% else %}
+            <div class="ss-tip">
+              <div class="ss-tip-icon ss-tip-positive" aria-hidden="true"><i class="bi bi-check2-circle"></i></div>
+              <div>
+                <h3 class="ss-tip-title">Nothing to flag right now</h3>
+                <p class="ss-tip-message">Keep logging your spending and new tips will appear here.</p>
+              </div>
+            </div>
+          {% endfor %}
+        </section>
+      </div>
+
+      <!-- How notes are read -->
+      <div class="col-xl-4">
+        <aside class="ss-context-panel">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <i class="bi bi-stars text-primary"></i>
+            <h2 class="h6 fw-bold mb-0">How SaveSip reads your notes</h2>
+          </div>
+          <p class="small text-muted mb-3">
+            Every note is quoted back to you. When a Want's note gives one of these reasons,
+            it is treated as planned and never flagged as an impulse buy, even if social media influenced it.
+          </p>
+          <ul class="list-unstyled mb-3">
+            {% for label, words in note_reasons %}
+              <li class="ss-reason">
+                <span class="ss-reason-icon" aria-hidden="true"><i class="bi bi-{{ note_icons.get(label, 'check2-circle') }}"></i></span>
+                <div class="min-w-0">
+                  <div class="fw-semibold small">{{ label }}</div>
+                  <div class="ss-reason-words">
+                    {% for word in words %}<span>{{ word }}</span>{% endfor %}
+                  </div>
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+          <div class="ss-note-empty">
+            <i class="bi bi-lightbulb"></i>
+            <p class="mb-0">Essential and Unplanned expenses are never counted as impulse buys, with or without a note.</p>
+          </div>
         </aside>
 
         {% if hidden_tips %}

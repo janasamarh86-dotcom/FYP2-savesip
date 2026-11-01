@@ -21,7 +21,8 @@
             </div>
           </div>
 
-          <form method="post" action="{{ form_action or url_for('add_expense') }}">
+          <!-- data-validate: checked in the browser before sending (base.html), and again on the server -->
+          <form method="post" action="{{ form_action or url_for('add_expense') }}" novalidate data-validate>
             {{ form.hidden_tag() }}
 
             {{ render_field(form.amount, prefix="RM", inputmode="decimal", placeholder="0.00") }}
@@ -36,10 +37,11 @@
             </div>
 
             {{ render_field(form.social_media_influence,
-                            help="Did TikTok, Instagram or Shopee Live make you buy this? Choose None if not.") }}
+                            help="Did TikTok, Instagram, Shopee Live or another platform make you buy this? Choose None if not.") }}
 
             {{ render_field(form.date) }}
-            {{ render_field(form.description, rows=3, placeholder="Optional, e.g. Lunch at the cafeteria") }}
+            {{ render_field(form.description, rows=3, placeholder="Optional, e.g. Bought a gift for my mom",
+                            help="SaveSip reads your note. Say why you bought it and your Suggestions will quote it.") }}
 
             <div class="d-flex gap-2 mt-2">
               {{ form.submit(class="btn btn-danger flex-grow-1 py-2", value=("Save Changes" if editing else form.submit.label.text)) }}

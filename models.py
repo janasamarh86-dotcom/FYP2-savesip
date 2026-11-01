@@ -29,10 +29,11 @@ CATEGORIES = [
     "Savings",
     "Academic",
     "Social",
-    "House Rent",  # added in FYP 2 for students renting off campus
+    "Other",  # anything that fits none of the above; kept last
 ]
 
-SOCIAL_MEDIA_PLATFORMS = ["TikTok", "Instagram", "Shopee Live"]
+# "Other" covers any platform not listed (e.g. Facebook, YouTube, Xiaohongshu)
+SOCIAL_MEDIA_PLATFORMS = ["TikTok", "Instagram", "Shopee Live", "Other"]
 
 # Values allowed in Expense.social_media_influence. "None" means the purchase
 # was not influenced by social media.
@@ -359,6 +360,9 @@ def upgrade_schema():
     3. User gained notification preferences (budget and social media alerts
        on, monthly reminder off, as on the Settings page).
     4. Budget gained an optional description.
+    5. The "House Rent" category was removed; its records move to "Other".
+       A House Rent budget is added to an existing Other budget for the
+       same month instead (one budget per category per month).
     """
     inspector = inspect(db.engine)
     tables = inspector.get_table_names()
@@ -400,3 +404,29 @@ def upgrade_schema():
 
         if budget_columns is not None and "description" not in budget_columns:
             connection.execute(text("ALTER TABLE budgets ADD COLUMN description VARCHAR(255)"))
+
+        for table in ("expenses", "planned_expenses"):
+            if table in tables:
+                connection.execute(text(
+                    f"UPDATE {table} SET category = 'Other' WHERE category = 'House Rent'"
+                ))
+        if budget_columns is not None:
+            same_period = (
+                "rent.user_id = budgets.user_id AND rent.month = budgets.month "
+                "AND rent.year = budgets.year AND rent.category = 'House Rent'"
+            )
+            connection.execute(text(
+                f"UPDATE budgets SET amount = amount + "
+                f"(SELECT rent.amount FROM budgets AS rent WHERE {same_period}) "
+                f"WHERE category = 'Other' AND EXISTS "
+                f"(SELECT 1 FROM budgets AS rent WHERE {same_period})"
+            ))
+            connection.execute(text(
+                "DELETE FROM budgets WHERE category = 'House Rent' AND EXISTS "
+                "(SELECT 1 FROM budgets AS other WHERE other.user_id = budgets.user_id "
+                "AND other.month = budgets.month AND other.year = budgets.year "
+                "AND other.category = 'Other')"
+            ))
+            connection.execute(text(
+                "UPDATE budgets SET category = 'Other' WHERE category = 'House Rent'"
+            ))

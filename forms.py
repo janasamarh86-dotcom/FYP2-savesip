@@ -64,12 +64,33 @@ BCRYPT_MAX_BYTES = 72
 # Largest value that fits in a Numeric(10, 2) column
 MAX_AMOUNT = Decimal("99999999.99")
 
-# Essential / Want / Unplanned, stored as Essential / Luxury / Situational.
-# The empty first option makes the user pick a type on purpose.
-EXPENSE_TYPE_CHOICES = [SelectChoice(value="", label="Select a type")] + [
+def _with_placeholder(placeholder, choices):
+    """Put an empty "Select ..." option first so nothing is pre-selected and
+    the user has to pick on purpose. choices are values or SelectChoices."""
+    return [SelectChoice(value="", label=placeholder)] + [
+        choice if isinstance(choice, SelectChoice) else SelectChoice(value=choice, label=choice)
+        for choice in choices
+    ]
+
+
+def _required_select(label, placeholder, choices, message):
+    """A dropdown that starts empty and shows message (in red, under the
+    field) if the form is saved without a choice. The message is also given
+    to the browser (data-required-message) so the form is stopped before it
+    is even sent; see base.html."""
+    return SelectField(
+        label,
+        choices=_with_placeholder(placeholder, choices),
+        validators=[DataRequired(message=message)],
+        invalid_choice_message=message,
+        render_kw={"data-required-message": message},
+    )
+
+
+# Essential / Want / Unplanned, stored as Essential / Luxury / Situational
+EXPENSE_TYPE_CHOICES = [
     SelectChoice(value=value, label=EXPENSE_TYPE_LABELS[value]) for value in EXPENSE_TYPES
 ]
-EXPENSE_TYPE_MESSAGE = "Choose Essential, Want or Unplanned."
 
 
 def local_today():
@@ -231,8 +252,8 @@ class LoginForm(FlaskForm):
 
 class IncomeForm(FlaskForm):
     amount = _amount_field()
-    source = SelectField(
-        "Source", choices=INCOME_SOURCES, validators=[DataRequired()]
+    source = _required_select(
+        "Source", "Select a source", INCOME_SOURCES, "Please select an income source."
     )
     payment_method = SelectField(
         "Payment Method", choices=PAYMENT_METHODS, validators=[DataRequired()]
@@ -248,23 +269,20 @@ class IncomeForm(FlaskForm):
 
 class ExpenseForm(FlaskForm):
     amount = _amount_field()
-    category = SelectField(
-        "Category", choices=CATEGORIES, validators=[DataRequired()]
+    category = _required_select(
+        "Category", "Select a category", CATEGORIES, "Please select a category."
     )
     payment_method = SelectField(
         "Payment Method", choices=PAYMENT_METHODS, validators=[DataRequired()]
     )
-    social_media_influence = SelectField(
+    social_media_influence = _required_select(
         "Social Media Influence",
-        choices=SOCIAL_MEDIA_INFLUENCE_OPTIONS,
-        default="None",
-        validators=[DataRequired()],
+        "Select a platform, or None",
+        SOCIAL_MEDIA_INFLUENCE_OPTIONS,
+        "Please select a social media influence (choose None if there was none).",
     )
-    expense_type = SelectField(
-        "Expense Type",
-        choices=EXPENSE_TYPE_CHOICES,
-        validators=[DataRequired(message=EXPENSE_TYPE_MESSAGE)],
-        invalid_choice_message=EXPENSE_TYPE_MESSAGE,
+    expense_type = _required_select(
+        "Expense Type", "Select a type", EXPENSE_TYPE_CHOICES, "Please select an expense type."
     )
     date = _date_field()
     description = TextAreaField(

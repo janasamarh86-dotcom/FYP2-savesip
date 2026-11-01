@@ -75,14 +75,37 @@
                inject_notifications() in routes.py) -->
           <div class="dropdown">
             <!-- data-bs-display="static": positioned by CSS (centred on phones) -->
-            <button type="button" class="ss-icon-btn" data-bs-toggle="dropdown" aria-expanded="false"
-                    data-bs-display="static"
+            <button type="button" class="ss-icon-btn" id="notifyBell" data-bs-toggle="dropdown" aria-expanded="false"
+                    data-bs-display="static" data-notification-key="{{ notification_key }}"
                     aria-label="Notifications{{ ' (' ~ notification_count ~ ' new)' if notification_count }}">
               <i class="bi bi-bell{{ '-fill' if notification_count }}"></i>
               {% if notification_count %}
-                <span class="ss-bell-badge" aria-hidden="true">{{ notification_count if notification_count < 10 else "9+" }}</span>
+                <span class="ss-bell-badge" id="notifyBadge" aria-hidden="true">{{ notification_count if notification_count < 10 else "9+" }}</span>
               {% endif %}
             </button>
+            <script>
+              // Clicking the bell hides the red count. It stays hidden on later
+              // pages until the notifications change (notification_key from
+              // inject_notifications() in routes.py). Runs here, not at the end
+              // of the page, so an already-seen badge never flashes up.
+              (function () {
+                const bell = document.getElementById("notifyBell");
+                const key = bell.dataset.notificationKey;
+                const storageKey = "savesip-seen-notifications";
+                function hideBadge() {
+                  const badge = document.getElementById("notifyBadge");
+                  if (badge) badge.remove();
+                  bell.setAttribute("aria-label", "Notifications");
+                }
+                try {
+                  if (key && localStorage.getItem(storageKey) === key) hideBadge();
+                } catch (error) { /* storage blocked: the badge just shows */ }
+                bell.addEventListener("click", function () {
+                  hideBadge();
+                  try { localStorage.setItem(storageKey, key); } catch (error) { /* ignore */ }
+                });
+              })();
+            </script>
             <div class="dropdown-menu dropdown-menu-end ss-dropdown ss-notify-menu p-0">
               <div class="ss-dropdown-header d-flex justify-content-between align-items-center">
                 <span>Notifications</span>
@@ -288,6 +311,46 @@
       if (message && !window.confirm(message)) {
         event.preventDefault();
       }
+    });
+
+    // Forms marked data-validate (Add/Edit Income and Expense) are not sent
+    // while a required field is empty: each empty field turns red with its
+    // message underneath (data-required-message from forms.py). The server
+    // checks again, so the rule holds even without JavaScript.
+    function feedbackFor(field) {
+      let feedback = field.parentNode.querySelector(".invalid-feedback");
+      if (!feedback) {
+        feedback = document.createElement("div");
+        feedback.className = "invalid-feedback";
+        field.insertAdjacentElement("afterend", feedback);
+      }
+      return feedback;
+    }
+
+    document.querySelectorAll("form[data-validate]").forEach(function (form) {
+      form.addEventListener("submit", function (event) {
+        let firstEmpty = null;
+        form.querySelectorAll("[required]").forEach(function (field) {
+          if (field.value.trim() !== "") return;
+          field.classList.add("is-invalid");
+          feedbackFor(field).textContent = field.dataset.requiredMessage || "This field is required.";
+          firstEmpty = firstEmpty || field;
+        });
+        if (firstEmpty) {
+          event.preventDefault();
+          firstEmpty.focus();
+        }
+      });
+
+      // Clear a field's error as soon as it is filled in
+      ["change", "input"].forEach(function (type) {
+        form.addEventListener(type, function (event) {
+          const field = event.target;
+          if (field.classList.contains("is-invalid") && field.value.trim() !== "") {
+            field.classList.remove("is-invalid");
+          }
+        });
+      });
     });
   </script>
 

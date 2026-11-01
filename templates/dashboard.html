@@ -22,53 +22,64 @@
     </div>
   </div>
 
-  <!-- Summary cards -->
+  <!-- Summary cards, each with a small donut chart (drawn by SaveSipCharts.ring below;
+       hover a ring for the amounts) -->
+  {% set positive = balance >= 0 %}
   <div class="row g-3 mb-4">
     <div class="col-md-4">
       <div class="card border-0 shadow-sm h-100">
-        <div class="card-body d-flex align-items-center">
-          <div class="rounded-3 bg-success bg-opacity-10 text-success fs-3 d-flex align-items-center justify-content-center me-3"
-               style="width: 3.25rem; height: 3.25rem;">
-            <i class="bi bi-arrow-down-circle"></i>
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="ss-donut">
+            <canvas id="incomeDonut" role="img" aria-label="Donut chart of this month's income by source"></canvas>
+            <span class="ss-donut-icon text-success" aria-hidden="true"><i class="bi bi-arrow-down-circle"></i></span>
           </div>
-          <div>
+          <div class="min-w-0">
             <div class="text-muted small">Total Income</div>
             <div class="h4 fw-bold mb-0 text-success">{{ total_income|rm }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="col-md-4">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body d-flex align-items-center">
-          <div class="rounded-3 bg-danger bg-opacity-10 text-danger fs-3 d-flex align-items-center justify-content-center me-3"
-               style="width: 3.25rem; height: 3.25rem;">
-            <i class="bi bi-arrow-up-circle"></i>
-          </div>
-          <div>
-            <div class="text-muted small">Total Expenses</div>
-            <div class="h4 fw-bold mb-0 text-danger">{{ total_expenses|rm }}</div>
             <div class="small text-muted">
-              {{ type_totals["Essential"]|rm }} essential &middot; {{ type_totals["Luxury"]|rm }} wants
-              &middot; {{ type_totals["Situational"]|rm }} unplanned
+              {% if income_source_count %}From {{ income_source_count }} source{{ "s" if income_source_count != 1 }}{% else %}No income yet this month{% endif %}
             </div>
           </div>
         </div>
       </div>
     </div>
     <div class="col-md-4">
-      {% set positive = balance >= 0 %}
       <div class="card border-0 shadow-sm h-100">
-        <div class="card-body d-flex align-items-center">
-          <div class="rounded-3 {{ 'bg-primary text-primary' if positive else 'bg-danger text-danger' }} bg-opacity-10 fs-3 d-flex align-items-center justify-content-center me-3"
-               style="width: 3.25rem; height: 3.25rem;">
-            <i class="bi bi-wallet2"></i>
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="ss-donut">
+            <canvas id="expensesDonut" role="img" aria-label="Donut chart of this month's expenses: essential, wants and unplanned"></canvas>
+            <span class="ss-donut-icon text-danger" aria-hidden="true"><i class="bi bi-arrow-up-circle"></i></span>
           </div>
-          <div>
+          <div class="min-w-0">
+            <div class="text-muted small">Total Expenses</div>
+            <div class="h4 fw-bold mb-0 text-danger">{{ total_expenses|rm }}</div>
+            <div class="ss-donut-key">
+              <span><i class="ss-dot ss-dot-essential"></i>{{ type_totals["Essential"]|rm }} essential</span>
+              <span><i class="ss-dot ss-dot-want"></i>{{ type_totals["Luxury"]|rm }} wants</span>
+              <span><i class="ss-dot ss-dot-unplanned"></i>{{ type_totals["Situational"]|rm }} unplanned</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="ss-donut">
+            <canvas id="balanceDonut" role="img" aria-label="Donut chart of income spent and left this month"></canvas>
+            <span class="ss-donut-icon {{ 'text-primary' if positive else 'text-danger' }}" aria-hidden="true"><i class="bi bi-wallet2"></i></span>
+          </div>
+          <div class="min-w-0">
             <div class="text-muted small">Balance</div>
             <div class="h4 fw-bold mb-0 {{ 'text-primary' if positive else 'text-danger' }}">{{ balance|rm }}</div>
-            <div class="small text-muted">
-              {{ "Income minus expenses this month" if positive else "You have spent more than you earned this month" }}
+            <div class="ss-donut-key">
+              {% if not positive %}
+                <span><i class="ss-dot ss-dot-spent"></i>You have spent more than you earned</span>
+              {% elif total_income %}
+                <span><i class="ss-dot ss-dot-left"></i>{{ balance_share }}% of your income left</span>
+              {% else %}
+                <span>Income minus expenses this month</span>
+              {% endif %}
             </div>
           </div>
         </div>
@@ -141,7 +152,7 @@
   <div class="card border-0 shadow-sm mb-4">
     <div class="card-body">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2 class="h6 fw-bold mb-0"><i class="bi bi-piggy-bank me-1 text-success"></i>Budgets for {{ month_name }}</h2>
+        <h2 class="h6 fw-bold mb-0"><i class="bi bi-calculator me-1 text-success"></i>Budgets for {{ month_name }}</h2>
         <a href="{{ url_for('set_budget') }}" class="btn btn-sm btn-outline-success">Manage budgets</a>
       </div>
       {% if budget_status %}
@@ -239,6 +250,11 @@
   // Data comes from the dashboard route; |tojson makes it safe JavaScript.
   const categoryTotals = {{ category_chart|tojson }};
   const socialMediaTotals = {{ social_media_chart|tojson }};
+  const summaryCharts = {{ summary_charts|tojson }};
+
+  SaveSipCharts.ring("incomeDonut", summaryCharts.income);
+  SaveSipCharts.ring("expensesDonut", summaryCharts.expenses);
+  SaveSipCharts.ring("balanceDonut", summaryCharts.balance);
 
   SaveSipCharts.pie("categoryChart", categoryTotals, {
     emptyMessage: "No expenses recorded this month yet.",

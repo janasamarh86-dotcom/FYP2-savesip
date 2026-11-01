@@ -21,7 +21,8 @@
             </div>
           </div>
 
-          <form method="post" action="{{ form_action or url_for('add_income') }}">
+          <!-- data-validate: checked in the browser before sending (base.html), and again on the server -->
+          <form method="post" action="{{ form_action or url_for('add_income') }}" novalidate data-validate>
             {{ form.hidden_tag() }}
 
             {{ render_field(form.amount, prefix="RM", inputmode="decimal", placeholder="0.00") }}

@@ -7,6 +7,7 @@ current_user.id, so users only ever see and change their own data.
 
 import calendar
 import csv
+import hashlib
 import io
 import re
 import time
@@ -34,6 +35,7 @@ from forms import (
 )
 from models import (
     CATEGORIES,
+    EXPENSE_TYPE_LABELS,
     EXPENSE_TYPES,
     INCOME_SOURCES,
     PAYMENT_METHODS,
@@ -69,7 +71,15 @@ PLATFORM_TIPS = {
         "Live-stream flash deals and countdown timers push quick decisions. Set a "
         "spending limit before joining a live session and stick to it."
     ),
+    "Other": (
+        "Sponsored posts and in-app shops on any platform are built to make buying "
+        "effortless. Turn off shopping notifications and unfollow accounts that "
+        "keep tempting you."
+    ),
 }
+
+# How each platform is named inside a sentence ("Other" is any platform not listed)
+PLATFORM_NAMES = {"Other": "other social media"}
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +184,9 @@ def budget_status(year, month, spent_by_category):
         spent = spent_by_category.get(budget.category, ZERO)
         percent = int(spent / budget.amount * 100)
         over = spent > budget.amount
+        # Compared exactly (not with the rounded-down percent), so RM80.00 of
+        # a RM100.00 budget always counts as 80%
+        reached_warning = spent * 100 >= budget.amount * BUDGET_WARNING_PERCENT
         status.append({
             "category": budget.category,
             "budget": budget.amount,
@@ -181,7 +194,7 @@ def budget_status(year, month, spent_by_category):
             "remaining": budget.amount - spent,
             "percent": percent,
             "over": over,
-            "near_limit": not over and percent >= BUDGET_WARNING_PERCENT,
+            "near_limit": not over and reached_warning,
             "description": budget.description,
         })
     return status
@@ -268,10 +281,12 @@ def dashboard():
     today = local_today()
     start, end = month_bounds(today.year, today.month)
 
-    total_income = total_for(Income, start, end)
+    income_by_source = totals_by(Income, Income.source, start, end, INCOME_SOURCES)
+    total_income = sum(income_by_source.values(), ZERO)
     spent_by_category = totals_by(Expense, Expense.category, start, end, CATEGORIES)
     total_expenses = sum(spent_by_category.values(), ZERO)
     type_totals = totals_by(Expense, Expense.expense_type, start, end, EXPENSE_TYPES)
+    balance = total_income - total_expenses
     spent_by_influence = totals_by(
         Expense, Expense.social_media_influence, start, end, SOCIAL_MEDIA_INFLUENCE_OPTIONS
     )
@@ -299,9 +314,21 @@ def dashboard():
         year=today.year,
         total_income=total_income,
         total_expenses=total_expenses,
-        balance=total_income - total_expenses,
+        balance=balance,
+        balance_share=share_of(max(balance, ZERO), total_income),
+        income_source_count=sum(1 for amount in income_by_source.values() if amount),
         type_totals=type_totals,
         social_media_total=social_media_total,
+        # Small donut charts beside the three summary figures
+        summary_charts={
+            "income": chart_series(income_by_source),
+            "expenses": chart_series(
+                type_totals, labels=[EXPENSE_TYPE_LABELS[key] for key in type_totals]
+            ),
+            "balance": chart_series(
+                {"Spent": total_expenses, "Left": max(balance, ZERO)}
+            ),
+        },
         budget_status=budget_status(today.year, today.month, spent_by_category),
         recent_expenses=recent_expenses,
         recent_incomes=recent_incomes,
@@ -854,51 +881,101 @@ def note_reason(expense):
     return None
 
 
-def _quote(text, limit=120):
-    """A user's note, tidied and shortened for use inside a sentence."""
-    text = " ".join(text.split()).rstrip(".")
-    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
-
-
-def _suggestion(level, title, message, expenses=None, notify=False, url=None):
+def _suggestion(level, title, message, expenses=None, notify=False, url=None, kind=None):
     """One suggestion card.
 
     level is "positive", "warning", "info", "context" (a reason found in the
     user's notes) or "reminder" (mapped to colours in the template).
     notify=True also shows it under the navbar bell, linking to url (the
-    Suggestions page by default).
+    Suggestions page by default). kind marks budget alerts ("budget_over",
+    "budget_near") so the bell can list them first.
     """
     return {"level": level, "title": title, "message": message,
-            "expenses": expenses or [], "notify": notify, "url": url}
+            "expenses": expenses or [], "notify": notify, "url": url, "kind": kind}
 
 
-def _context_note(expense, reason):
-    """One entry for the Spending Context panel: a note we read and what it meant."""
+def _spent_on(expense):
+    """What an expense was spent "on", for the start of a note card: the
+    platform that influenced a want or unplanned cost, otherwise the category."""
+    if expense.is_social_media_influenced and expense.expense_type != "Essential":
+        platform = expense.social_media_influence
+        return "social media" if platform == "Other" else platform
+    return "miscellaneous items" if expense.category == "Other" else expense.category
+
+
+def _note_card(expense, reason):
+    """A suggestion card for one expense that has a note, quoting the note
+    exactly as the user wrote it.
+
+    The card keeps its parts separate so the template can highlight the
+    note: lead ("We noticed you spent ..."), note (the user's own words) and
+    verdict (what SaveSip made of it). message joins them into one sentence.
+    """
+    note = expense.description.strip()
+    lead = f"We noticed you spent RM{expense.amount:,.2f} on {_spent_on(expense)}."
+    platform = expense.social_media_influence
+
     if expense.expense_type == "Essential":
-        label, outcome, flagged = "Essential", "Never flagged", False
+        level, label, outcome, flagged = "positive", "Essential", "Never flagged", False
+        title = f"{expense.category}: a need, not a want"
+        verdict = (f"Since {reason[1]} and you marked it as Essential, "
+                   if reason else "You marked it as Essential, so ")
+        verdict += "it counts as a need, not an impulse buy. Well done!"
+        if expense.is_social_media_influenced:
+            verdict += f" The {PLATFORM_NAMES.get(platform, platform)} influence is ignored for essentials."
     elif expense.expense_type == "Situational":
-        label, outcome, flagged = "Unplanned", "Never flagged", False
+        level, label, outcome, flagged = "info", "Unplanned", "Never flagged", False
+        title = f"Unplanned {expense.category} cost"
+        if reason:
+            verdict = (f"Since {reason[1]}, this is exactly the kind of surprise a small "
+                       f"Savings cushion is for. Unplanned costs are never counted as impulse buys.")
+        else:
+            verdict = ("You marked it as Unplanned, so it isn't counted as an impulse buy. "
+                       "Putting a little into Savings each month helps with the next surprise.")
     elif reason:
-        label, outcome, flagged = reason[0], "Not an impulse buy", False
+        level, label, outcome, flagged = "context", reason[0], "Not an impulse buy", False
+        title = f"{reason[0]}: not an impulse buy"
+        verdict = f"Since {reason[1]}, we won't flag it as an impulse buy!"
     else:
-        label, outcome, flagged = "No clear reason", "Counted as a want", True
-    return {"expense": expense, "label": label, "outcome": outcome, "flagged": flagged}
+        level, label, outcome, flagged = "warning", "No clear reason", "Counted as an impulse buy", True
+        if expense.is_social_media_influenced:
+            where = "social media" if platform == "Other" else platform
+            title = f"{where[0].upper() + where[1:]} purchase counted as an impulse buy"
+            counted = f"it counts toward your {where} impulse buys"
+        else:
+            title = "Counted as a want"
+            counted = "it counts as a want this month"
+        verdict = (f"We couldn't find a reason such as a gift, your studies or an emergency "
+                   f"in it, so {counted}. If it was planned, edit the note to say why.")
+
+    after_quote = "" if note[-1] in ".!?" else "."
+    card = _suggestion(level, title, f"{lead} Your note says “{note}”{after_quote} {verdict}", [expense])
+    card.update({"expense": expense, "lead": lead, "note": note, "verdict": verdict,
+                 "label": label, "outcome": outcome, "flagged": flagged})
+    return card
 
 
 def build_suggestions(year, month):
     """Personalised suggestions from the current user's expenses in a month.
 
+    Every expense's notes (description) are read:
+    - Each expense with a note gets its own card that quotes the note word
+      for word and says how it was treated. A Want whose note gives a reason
+      (NOTE_REASONS, e.g. "Bought a gift for my mom") is never flagged as an
+      impulse buy, even when social media influenced it.
+    - The note also decides whether a Want counts as an impulse buy in the
+      summary cards below.
+
+    Summary cards:
     - Essentials: positive reinforcement; social media influence is ignored
       for them.
-    - Wants whose notes give a reason (NOTE_REASONS, e.g. "gift for mom",
-      "study cafe", "emergency"): one card per expense that quotes the note
-      and explains why it is not an impulse buy, even when social media
-      influenced it.
-    - Other wants influenced by a platform: an impulse-buying warning for
-      that platform. Remaining wants: a general impulse-buying warning.
+    - Wants influenced by a platform (with no reason in their notes): an
+      impulse-buying warning for that platform. Remaining wants: a general
+      impulse-buying warning.
     - Unplanned (Situational): a tip about keeping a cushion for surprises;
       never treated as impulse buying.
-    - Budgets: a warning when exceeded, a note at 80% or more.
+    - Budgets: a warning when exceeded, and another at 80% or more of the
+      budget. Both always reach the navbar bell (when budget alerts are on).
     - Monthly report reminder in the last week of the month.
 
     The user's notification settings switch off social media warnings
@@ -906,29 +983,28 @@ def build_suggestions(year, month):
     (notify_monthly).
 
     Used by the Suggestions page and the navbar notifications. Returns the
-    suggestion items, the notes that were read (for the Spending Context
-    panel) and the month's summary figures.
+    summary items, the note cards and the month's summary figures.
     """
     start, end = month_bounds(year, month)
     expenses = expenses_for(start, end)
     show_social = current_user.notify_social
     show_budget = current_user.notify_budget
 
-    needs, unplanned, other_wants, explained_wants = [], [], [], []
+    needs, unplanned, other_wants = [], [], []
     impulse_by_platform = {platform: [] for platform in SOCIAL_MEDIA_PLATFORMS}
-    context_notes = []
+    note_cards = []
 
     for expense in expenses:
         reason = note_reason(expense)
-        if expense.description and (expense.expense_type == "Luxury" or expense.is_social_media_influenced):
-            context_notes.append(_context_note(expense, reason))
+        if expense.description and expense.description.strip():
+            note_cards.append(_note_card(expense, reason))
 
         if expense.expense_type == "Essential":
             needs.append(expense)
         elif expense.expense_type == "Situational":
             unplanned.append(expense)
         elif reason:
-            explained_wants.append((expense, reason))
+            pass  # a planned want: its note card explains why it is not flagged
         elif expense.is_social_media_influenced:
             impulse_by_platform[expense.social_media_influence].append(expense)
         else:
@@ -958,28 +1034,17 @@ def build_suggestions(year, month):
             needs,
         ))
 
-    # One card per explained want, quoting the user's own note
-    for expense, (label, phrase) in explained_wants:
-        where = expense.social_media_influence if expense.is_social_media_influenced else expense.category
-        items.append(_suggestion(
-            "context",
-            f"{label}: not an impulse buy",
-            f"We noticed you spent RM{expense.amount:,.2f} on {where}. "
-            f"Your note says “{_quote(expense.description)}”. "
-            f"Since {phrase}, we won't flag it as an impulse buy!",
-            [expense],
-        ))
-
     if show_social:
         for platform, platform_expenses in impulse_by_platform.items():
             if not platform_expenses:
                 continue
             platform_total = sum_amounts(platform_expenses)
+            name = PLATFORM_NAMES.get(platform, platform)
             items.append(_suggestion(
                 "warning",
-                f"Watch out for {platform} impulse buying",
+                f"Watch out for {name} impulse buying",
                 f"You bought {plural(len(platform_expenses), 'want')} "
-                f"influenced by {platform} this month, totalling RM{platform_total:,.2f} "
+                f"influenced by {name} this month, totalling RM{platform_total:,.2f} "
                 f"({share_of(platform_total, total_spent)}% of your spending). "
                 f"{PLATFORM_TIPS[platform]}",
                 platform_expenses,
@@ -1015,8 +1080,8 @@ def build_suggestions(year, month):
         items.append(_suggestion(
             "positive",
             "No social media impulse buys",
-            "None of your wants this month were impulse buys from "
-            "TikTok, Instagram or Shopee Live. Nice self-control!",
+            "None of your wants this month were impulse buys from TikTok, "
+            "Instagram, Shopee Live or any other platform. Nice self-control!",
         ))
 
     if show_budget:
@@ -1031,14 +1096,17 @@ def build_suggestions(year, month):
                     f"({status['percent']}%). Try to hold off on {status['category']} "
                     f"spending for the rest of the month.",
                     notify=True,
+                    kind="budget_over",
                 ))
             elif status["near_limit"]:
                 items.append(_suggestion(
-                    "info",
+                    "warning",
                     f"{status['category']} budget {status['percent']}% used",
                     f"You have used {status['percent']}% of your {status['category']} "
-                    f"budget, with RM{status['remaining']:,.2f} left for this month.",
+                    f"budget, with RM{status['remaining']:,.2f} left for this month. "
+                    f"Slow down on {status['category']} so you don't go over.",
                     notify=True,
+                    kind="budget_near",
                 ))
 
     today = local_today()
@@ -1057,16 +1125,26 @@ def build_suggestions(year, month):
 
     return {
         "items": items,
-        "context_notes": context_notes,
+        "note_cards": note_cards,
         "total_spent": total_spent,
         "impulse_total": impulse_total,
         "expense_count": len(expenses),
     }
 
 
+def _notification_rank(item):
+    """Bell order: budget alerts first (exceeded, then 80% used), then
+    reminders (planned expenses, monthly review), then other warnings."""
+    if item["kind"] == "budget_over":
+        return 0
+    if item["kind"] == "budget_near":
+        return 1
+    return {"reminder": 2, "warning": 3}.get(item["level"], 4)
+
+
 @app.context_processor
 def inject_notifications():
-    """Navbar bell: reminders and the user's top warnings."""
+    """Navbar bell: budget alerts, reminders and the user's top warnings."""
     if not current_user.is_authenticated:
         return {}
     try:
@@ -1086,14 +1164,21 @@ def inject_notifications():
     except SQLAlchemyError:
         # Never let the bell break a page (including error pages)
         db.session.rollback()
-        return {"notifications": [], "notification_count": 0}
+        return {"notifications": [], "notification_count": 0, "notification_key": ""}
 
-    # Reminders first (planned expenses, monthly review), then warnings
-    # (exceeded budgets, impulse buys), then notes (budget at 80%)
-    order = {"reminder": 0, "warning": 1}
     alerts = reminders + [item for item in items if item["notify"]]
-    alerts.sort(key=lambda item: order.get(item["level"], 2))
-    return {"notifications": alerts[:NOTIFICATION_LIMIT], "notification_count": len(alerts)}
+    alerts.sort(key=_notification_rank)
+    # Fingerprint of the current alerts. Once the user opens the bell, the
+    # badge stays hidden until this changes, i.e. until something new
+    # happens (see base.html).
+    key = hashlib.sha256(
+        f"{current_user.id}|{'|'.join(item['title'] for item in alerts)}".encode("utf-8")
+    ).hexdigest()[:16]
+    return {
+        "notifications": alerts[:NOTIFICATION_LIMIT],
+        "notification_count": len(alerts),
+        "notification_key": key if alerts else "",
+    }
 
 
 @app.route("/suggestions")
@@ -1106,7 +1191,8 @@ def suggestions():
         month_name=calendar.month_name[today.month],
         year=today.year,
         suggestions=result["items"],
-        context_notes=result["context_notes"],
+        note_cards=result["note_cards"],
+        note_reasons=[(label, words[:4]) for label, words, phrase in NOTE_REASONS],
         total_spent=result["total_spent"],
         impulse_total=result["impulse_total"],
         expense_count=result["expense_count"],

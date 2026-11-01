@@ -15,17 +15,25 @@
     "#10b981", "#fbbf24", "#a78bfa", "#64748b", "#0ea5e9",
   ];
 
-  // Fixed colours so a label always looks the same on every chart
+  // Fixed colours so a label always looks the same on every chart.
+  // "Other" (category, platform and income source) is always sky blue.
   const NAMED_COLORS = {
     "TikTok": "#2a2640",
     "Instagram": "#d62976",
     "Shopee Live": "#ee4d2d",
+    "Other": "#0ea5e9",
     "None": "#c4c1d4",
     "Cash": "#14b8a6",
     "Cashless": "#6c5ce7",
     "Essential": "#14b8a6",
-    "Non-essential": "#f59e42",
+    "Want": "#f59e42",
+    "Unplanned": "#4f46e5",
+    "Spent": "#e5484d",
+    "Left": "#6c5ce7",
   };
+
+  // Ring shown when a summary donut has nothing to show yet
+  const EMPTY_RING = "#ebe8f5";
 
   // Brand colours for pages that pick a single colour (e.g. reports.html)
   const BRAND = { violet: "#6c5ce7", teal: "#14b8a6", red: "#e5484d" };
@@ -123,6 +131,68 @@
     });
   }
 
+  // Tooltip drawn as a page element beside the pointer, used by ring():
+  // Chart.js's own tooltip is drawn inside the canvas and would be cut off
+  // in a small donut
+  function pageTooltip(context) {
+    const tooltip = context.tooltip;
+    let box = document.getElementById("ss-chart-tooltip");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "ss-chart-tooltip";
+      box.className = "ss-chart-tooltip";
+      box.setAttribute("role", "tooltip");
+      document.body.appendChild(box);
+    }
+    if (tooltip.opacity === 0 || !tooltip.body) {
+      box.classList.remove("is-visible");
+      return;
+    }
+    box.textContent = tooltip.body.map(function (part) { return part.lines.join(" "); }).join(" ");
+    const rect = context.chart.canvas.getBoundingClientRect();
+    box.style.left = rect.left + tooltip.caretX + "px";
+    box.style.top = rect.top + tooltip.caretY + "px";
+    box.classList.add("is-visible");
+  }
+
+  /** Small donut for a summary card: no legend, a plain ring when empty. */
+  function ring(target, series) {
+    const canvas = resolveCanvas(target);
+    if (!canvas) return null;
+
+    const labels = [];
+    const values = [];
+    series.labels.forEach(function (label, index) {
+      if (series.values[index] > 0) {
+        labels.push(label);
+        values.push(series.values[index]);
+      }
+    });
+    const empty = values.length === 0;
+
+    return new Chart(canvas, {
+      type: "doughnut",
+      data: {
+        labels: empty ? ["No data yet"] : labels,
+        datasets: [{
+          data: empty ? [1] : values,
+          backgroundColor: empty ? [EMPTY_RING] : colorsFor(labels),
+          borderColor: "#ffffff",
+          borderWidth: empty ? 0 : 2,
+          hoverOffset: empty ? 0 : 4,
+        }],
+      },
+      options: {
+        cutout: "70%",
+        layout: { padding: 4 },
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: false, external: empty ? null : pageTooltip },
+        },
+      },
+    });
+  }
+
   /** Single-series bar chart. Set horizontal: true for long labels. */
   function bar(target, series, options) {
     options = options || {};
@@ -190,5 +260,5 @@
     });
   }
 
-  global.SaveSipCharts = { pie: pie, bar: bar, line: line, formatRM: formatRM, colors: BRAND };
+  global.SaveSipCharts = { pie: pie, ring: ring, bar: bar, line: line, formatRM: formatRM, colors: BRAND };
 })(window);
