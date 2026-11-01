@@ -136,6 +136,33 @@ def requested_range():
     return first, last
 
 
+# The custom range last applied on the Dashboard, kept in the session so the
+# Dashboard reopens on it after visiting other pages. Choosing a month
+# clears it, and so does logging in or out (the session is cleared).
+RANGE_SESSION_KEY = "dashboard_range"
+
+
+def saved_range():
+    """The custom date range saved in the session, as (first, last), or None."""
+    stored = session.get(RANGE_SESSION_KEY)
+    try:
+        first, last = (date.fromisoformat(value) for value in stored)
+    except (TypeError, ValueError):
+        session.pop(RANGE_SESSION_KEY, None)
+        return None
+    return (first, last) if first <= last else None
+
+
+def format_months(first, last):
+    """The months a date range touches, e.g. "October – November 2026"."""
+    if (first.year, first.month) == (last.year, last.month):
+        return f"{calendar.month_name[last.month]} {last.year}"
+    first_name = calendar.month_name[first.month]
+    if first.year != last.year:
+        first_name += f" {first.year}"
+    return f"{first_name} – {calendar.month_name[last.month]} {last.year}"
+
+
 def format_range(first, last):
     """A date range for headings, e.g. "25 Oct – 25 Nov 2026"."""
     if first == last:
@@ -215,27 +242,65 @@ def budget_status(year, month, spent_by_category):
         )
     ).all()
     budgets.sort(key=lambda budget: CATEGORIES.index(budget.category))
+    return [
+        _budget_row(budget.category, budget.amount, spent_by_category.get(budget.category, ZERO),
+                    budget.description, budget_id=budget.id)
+        for budget in budgets
+    ]
 
-    status = []
+
+def budget_status_for_range(first, last, spent_by_category):
+    """Budgets for a custom date range: each category's budgets for every
+    month the range touches, added together, compared with what was spent
+    in the range. E.g. 25 Oct - 30 Nov combines the October and November
+    budgets."""
+    # Months counted as year * 12 + month, so "between" works across years
+    month_index = Budget.year * 12 + Budget.month
+    budgets = db.session.scalars(
+        select(Budget).where(
+            Budget.user_id == current_user.id,
+            month_index.between(first.year * 12 + first.month, last.year * 12 + last.month),
+        ).order_by(Budget.year, Budget.month)
+    ).all()
+
+    combined = {}
     for budget in budgets:
-        spent = spent_by_category.get(budget.category, ZERO)
-        percent = int(spent / budget.amount * 100)
-        over = spent > budget.amount
-        # Compared exactly (not with the rounded-down percent), so RM80.00 of
-        # a RM100.00 budget always counts as 80%
-        reached_warning = spent * 100 >= budget.amount * BUDGET_WARNING_PERCENT
-        status.append({
-            "id": budget.id,
-            "category": budget.category,
-            "budget": budget.amount,
-            "spent": spent,
-            "remaining": budget.amount - spent,
-            "percent": percent,
-            "over": over,
-            "near_limit": not over and reached_warning,
-            "description": budget.description,
-        })
-    return status
+        entry = combined.setdefault(budget.category, {"amount": ZERO, "notes": [], "months": []})
+        entry["amount"] += budget.amount
+        entry["months"].append(calendar.month_abbr[budget.month])
+        if budget.description:
+            entry["notes"].append(budget.description)
+
+    return [
+        _budget_row(
+            category, entry["amount"], spent_by_category.get(category, ZERO),
+            " · ".join(entry["notes"]) or None,
+            months=" + ".join(entry["months"]),
+        )
+        for category, entry in sorted(combined.items(), key=lambda item: CATEGORIES.index(item[0]))
+    ]
+
+
+def _budget_row(category, amount, spent, description, budget_id=None, months=None):
+    """One budget compared with what was spent, as shown in the budget lists.
+    months names the months combined in a custom range (e.g. "Oct + Nov")."""
+    percent = int(spent / amount * 100)
+    over = spent > amount
+    # Compared exactly (not with the rounded-down percent), so RM80.00 of
+    # a RM100.00 budget always counts as 80%
+    reached_warning = spent * 100 >= amount * BUDGET_WARNING_PERCENT
+    return {
+        "id": budget_id,
+        "category": category,
+        "budget": amount,
+        "spent": spent,
+        "remaining": amount - spent,
+        "percent": percent,
+        "over": over,
+        "near_limit": not over and reached_warning,
+        "description": description,
+        "months": months,
+    }
 
 
 def chart_series(totals, labels=None):
@@ -318,10 +383,20 @@ def index():
 def dashboard():
     # The period being viewed: a custom date range (?from=&to=, e.g. income
     # received on 25 Oct that lasts until 25 Nov), otherwise a month
-    # (?month=&year=, the current month by default). Everything below except
-    # Planned Expenses covers this period only; start is included, end is not.
+    # (?month=&year=, the current month by default). start is included,
+    # end is not.
+    #
+    # An applied range is saved in the session (sticky): a plain /dashboard
+    # visit, e.g. from the sidebar, reopens it. Choosing a month clears it.
     today = local_today()
     custom_range = requested_range()
+    if custom_range:
+        session[RANGE_SESSION_KEY] = [custom_range[0].isoformat(), custom_range[1].isoformat()]
+    elif "month" in request.args or "year" in request.args:
+        session.pop(RANGE_SESSION_KEY, None)
+    elif not request.args:
+        custom_range = saved_range()
+
     if custom_range:
         first, last = custom_range
         start, end = first, last + timedelta(days=1)
@@ -350,6 +425,18 @@ def dashboard():
     incomes = incomes_for(start, end)
     expenses = expenses_for(start, end)
 
+    # Budgets and planned expenses. In a custom range: the budgets of every
+    # month the range touches (combined) and the plans due within the range.
+    # In the month view: that month's budgets and the plans due from today.
+    if custom_range:
+        budgets = budget_status_for_range(first, last, spent_by_category)
+        budget_label = format_months(first, last)
+        plans = upcoming_planned(first=first, last=last)
+    else:
+        budgets = budget_status(year, month, spent_by_category)
+        budget_label = f"{calendar.month_name[month]} {year}"
+        plans = upcoming_planned()
+
     prev_year, prev_month = shift_month(year, month, -1)
     next_year, next_month = shift_month(year, month, 1)
 
@@ -360,6 +447,8 @@ def dashboard():
         year=year,
         period_label=period_label,
         is_range=custom_range is not None,
+        # "Back to this month" sends the month explicitly, which clears a saved range
+        this_month={"year": today.year, "month": today.month},
         # The custom range inputs start on the period being shown
         range_from=start.isoformat(),
         range_to=(end - timedelta(days=1)).isoformat(),
@@ -383,20 +472,16 @@ def dashboard():
                 {"Spent": total_expenses, "Left": max(balance, ZERO)}
             ),
         },
-        # Budgets are monthly, so they are only compared in the month view
-        budget_status=[] if custom_range else budget_status(year, month, spent_by_category),
+        budget_status=budgets,
+        budget_label=budget_label,
         # The 5 most recent records of the period being viewed
         recent_expenses=expenses[:5],
         recent_incomes=incomes[:5],
         category_chart=chart_series(spent_by_category),
         social_media_chart=chart_series(social_media_by_platform),
-        planned=upcoming_planned(limit=5),
-        planned_total=to_money(db.session.scalar(
-            select(func.sum(PlannedExpense.amount)).where(
-                PlannedExpense.user_id == current_user.id,
-                PlannedExpense.target_date >= today,
-            )
-        )),
+        planned=plans[:5],
+        planned_count=len(plans),
+        planned_total=sum((item["plan"].amount for item in plans), ZERO),
     )
 
 
@@ -585,9 +670,14 @@ def add_expense():
 
 
 def dashboard_url_for(day):
-    """The Dashboard for the month containing day, so a record added with a
-    past date (e.g. last month) is visible straight after saving it."""
-    if (day.year, day.month) == (local_today().year, local_today().month):
+    """A Dashboard view that includes day, so a newly added record is
+    visible straight after saving it: the saved custom range if day is in
+    it, otherwise the month containing day."""
+    custom_range = saved_range()
+    if custom_range:
+        if custom_range[0] <= day <= custom_range[1]:
+            return url_for("dashboard")
+    elif (day.year, day.month) == (local_today().year, local_today().month):
         return url_for("dashboard")
     return url_for("dashboard", month=day.month, year=day.year)
 
@@ -960,6 +1050,10 @@ REMINDER_DAYS = 7
 
 
 def _due_label(days_left):
+    if days_left < -1:
+        return f"Was due {-days_left} days ago"
+    if days_left == -1:
+        return "Was due yesterday"
     if days_left == 0:
         return "Due today"
     if days_left == 1:
@@ -967,16 +1061,24 @@ def _due_label(days_left):
     return f"Due in {days_left} days"
 
 
-def upcoming_planned(limit=None):
-    """The current user's planned expenses due today or later, soonest first.
+def upcoming_planned(limit=None, first=None, last=None):
+    """The current user's planned expenses, soonest first.
+
+    By default those due today or later. With first and last (a custom
+    date range on the Dashboard), those due between the two dates instead,
+    including ones already past.
 
     Each item is a dict with the PlannedExpense ("plan"), days_left, a
-    due_label and is_reminder (due within REMINDER_DAYS).
+    due_label and is_reminder (due within the next REMINDER_DAYS).
     """
     today = local_today()
+    if first and last:
+        due = PlannedExpense.target_date.between(first, last)
+    else:
+        due = PlannedExpense.target_date >= today
     stmt = (
         select(PlannedExpense)
-        .where(PlannedExpense.user_id == current_user.id, PlannedExpense.target_date >= today)
+        .where(PlannedExpense.user_id == current_user.id, due)
         .order_by(PlannedExpense.target_date, PlannedExpense.id)
     )
     if limit:
@@ -989,7 +1091,7 @@ def upcoming_planned(limit=None):
             "plan": plan,
             "days_left": days_left,
             "due_label": _due_label(days_left),
-            "is_reminder": days_left <= REMINDER_DAYS,
+            "is_reminder": 0 <= days_left <= REMINDER_DAYS,
         })
     return items
 

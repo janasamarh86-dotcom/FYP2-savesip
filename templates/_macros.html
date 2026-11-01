@@ -61,7 +61,10 @@
   {% set bar_class = "bg-danger" if status.over else ("bg-warning" if status.near_limit else "bg-success") %}
   <div class="mb-3{{ ' ss-budget-row' if next_url }}{{ ' is-editing' if highlight }}">
     <div class="d-flex justify-content-between align-items-center gap-2 small mb-1">
-      <span class="fw-semibold">{{ status.category }}</span>
+      <span class="fw-semibold">
+        {{ status.category }}
+        {% if status.months and "+" in status.months %}<span class="text-muted fw-normal">({{ status.months }})</span>{% endif %}
+      </span>
       <span class="d-flex align-items-center gap-2">
         <span class="text-muted text-nowrap">{{ status.spent|rm }} / {{ status.budget|rm }}</span>
         {% if next_url %}

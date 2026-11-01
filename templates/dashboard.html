@@ -66,7 +66,7 @@
     </div>
 
     {% if not is_current_month %}
-      <a href="{{ url_for('dashboard') }}" class="btn btn-link link-success text-decoration-none align-self-end">
+      <a href="{{ url_for('dashboard', **this_month) }}" class="btn btn-link link-success text-decoration-none align-self-end">
         <i class="bi bi-calendar-event me-1"></i>Back to this month
       </a>
     {% endif %}
@@ -137,13 +137,15 @@
     </div>
   </div>
 
-  <!-- Planned expenses (due within 7 days = reminder) -->
+  <!-- Planned expenses: upcoming ones in the month view, those due within the
+       range in a custom range (due within 7 days = reminder) -->
   {% set reminders = planned|selectattr("is_reminder")|list %}
   <div class="card border-0 shadow-sm mb-4" id="planned">
     <div class="card-body">
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <h2 class="h6 fw-bold mb-0">
           <i class="bi bi-calendar-check me-1 text-primary"></i>Planned Expenses
+          {% if is_range %}<span class="small text-muted fw-normal ms-1">due {{ period_label }}</span>{% endif %}
           {% if reminders %}
             <span class="badge rounded-pill ss-reminder-badge ms-1">
               <i class="bi bi-bell-fill me-1"></i>{{ reminders|length }} due within 7 days
@@ -151,7 +153,9 @@
           {% endif %}
         </h2>
         <div class="d-flex align-items-center gap-2">
-          {% if planned %}<span class="small text-muted">{{ planned_total|rm }} upcoming</span>{% endif %}
+          {% if planned %}
+            <span class="small text-muted">{{ planned_total|rm }} {{ "due in this range" if is_range else "upcoming" }}</span>
+          {% endif %}
           <a href="{{ url_for('add_planned_expense') }}" class="btn btn-sm btn-outline-success">
             <i class="bi bi-plus-lg me-1"></i>Plan an expense
           </a>
@@ -163,6 +167,13 @@
             {{ planned_item(item) }}
           {% endfor %}
         </div>
+        {% if planned_count > planned|length %}
+          <a href="{{ url_for('add_planned_expense') }}" class="d-inline-block small link-success mt-2">
+            and {{ planned_count - planned|length }} more
+          </a>
+        {% endif %}
+      {% elif is_range %}
+        <p class="text-muted mb-0">Nothing planned for {{ period_label }}.</p>
       {% else %}
         <p class="text-muted mb-0">
           Nothing planned yet. Add upcoming costs like fees or a trip, and SaveSip will remind you a week before.
@@ -201,10 +212,16 @@
   <!-- Budgets -->
   <div class="card border-0 shadow-sm mb-4">
     <div class="card-body">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2 class="h6 fw-bold mb-0"><i class="bi bi-calculator me-1 text-success"></i>Budgets for {{ month_name }}</h2>
+      <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+        <h2 class="h6 fw-bold mb-0"><i class="bi bi-calculator me-1 text-success"></i>Budgets for {{ budget_label }}</h2>
         <a href="{{ url_for('set_budget', month=month, year=year) }}" class="btn btn-sm btn-outline-success">Manage budgets</a>
       </div>
+      {% if is_range and budget_status %}
+        <p class="small text-muted mb-3">
+          <i class="bi bi-info-circle me-1"></i>Each category's budgets for {{ budget_label }} added together,
+          compared with what you spent from {{ period_label }}.
+        </p>
+      {% endif %}
       {% if budget_status %}
         <div class="row">
           {% for status in budget_status %}
@@ -213,9 +230,8 @@
         </div>
       {% elif is_range %}
         <p class="text-muted mb-0">
-          Budgets are set for each month, so they are not compared with a custom date range.
-          <a href="{{ url_for('dashboard', month=month, year=year) }}" class="link-success">View {{ month_name }} {{ year }}</a>
-          to see your budget progress.
+          You have no budgets for {{ budget_label }}.
+          <a href="{{ url_for('set_budget', month=month, year=year) }}" class="link-success">Set one now</a> to get alerts before you overspend.
         </p>
       {% else %}
         <p class="text-muted mb-0">
