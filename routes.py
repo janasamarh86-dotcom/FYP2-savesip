@@ -153,20 +153,24 @@ def totals_by(model, column, start, end, keys):
     return totals
 
 
-def expenses_for(start, end):
+def expenses_for(start, end, limit=None):
+    """Current user's expenses between start and end, newest first."""
     stmt = (
         select(Expense)
         .where(Expense.user_id == current_user.id, Expense.date >= start, Expense.date < end)
         .order_by(Expense.date.desc(), Expense.id.desc())
+        .limit(limit)
     )
     return db.session.scalars(stmt).all()
 
 
-def incomes_for(start, end):
+def incomes_for(start, end, limit=None):
+    """Current user's incomes between start and end, newest first."""
     stmt = (
         select(Income)
         .where(Income.user_id == current_user.id, Income.date >= start, Income.date < end)
         .order_by(Income.date.desc(), Income.id.desc())
+        .limit(limit)
     )
     return db.session.scalars(stmt).all()
 
@@ -281,8 +285,11 @@ def index():
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    # The month being viewed (?month=&year=), the current month by default.
+    # Everything below except Planned Expenses is for this month only.
     today = local_today()
-    start, end = month_bounds(today.year, today.month)
+    year, month = requested_period()
+    start, end = month_bounds(year, month)
 
     income_by_source = totals_by(Income, Income.source, start, end, INCOME_SOURCES)
     total_income = sum(income_by_source.values(), ZERO)
@@ -298,23 +305,17 @@ def dashboard():
     }
     social_media_total = sum(social_media_by_platform.values(), ZERO)
 
-    recent_expenses = db.session.scalars(
-        select(Expense)
-        .where(Expense.user_id == current_user.id)
-        .order_by(Expense.date.desc(), Expense.id.desc())
-        .limit(5)
-    ).all()
-    recent_incomes = db.session.scalars(
-        select(Income)
-        .where(Income.user_id == current_user.id)
-        .order_by(Income.date.desc(), Income.id.desc())
-        .limit(5)
-    ).all()
+    prev_year, prev_month = shift_month(year, month, -1)
+    next_year, next_month = shift_month(year, month, 1)
 
     return render_template(
         "dashboard.html",
-        month_name=calendar.month_name[today.month],
-        year=today.year,
+        month=month,
+        month_name=calendar.month_name[month],
+        year=year,
+        is_current_month=(year, month) == (today.year, today.month),
+        prev_period={"year": prev_year, "month": prev_month},
+        next_period={"year": next_year, "month": next_month},
         total_income=total_income,
         total_expenses=total_expenses,
         balance=balance,
@@ -332,9 +333,10 @@ def dashboard():
                 {"Spent": total_expenses, "Left": max(balance, ZERO)}
             ),
         },
-        budget_status=budget_status(today.year, today.month, spent_by_category),
-        recent_expenses=recent_expenses,
-        recent_incomes=recent_incomes,
+        budget_status=budget_status(year, month, spent_by_category),
+        # The 5 most recent records of the month being viewed
+        recent_expenses=expenses_for(start, end, limit=5),
+        recent_incomes=incomes_for(start, end, limit=5),
         category_chart=chart_series(spent_by_category),
         social_media_chart=chart_series(social_media_by_platform),
         planned=upcoming_planned(limit=5),

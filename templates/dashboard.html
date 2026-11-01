@@ -4,10 +4,14 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
+{# Edit/Delete return here, to the month being viewed #}
+{% set back_url = request.full_path.rstrip('?') %}
+{% set month_names = ["January", "February", "March", "April", "May", "June", "July",
+                      "August", "September", "October", "November", "December"] %}
 <div class="container">
 
   <!-- Header -->
-  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-3">
     <div>
       <h1 class="h3 fw-bold mb-1">Hi, {{ current_user.username }}</h1>
       <p class="text-muted mb-0">Here is your summary for {{ month_name }} {{ year }}.</p>
@@ -22,6 +26,31 @@
     </div>
   </div>
 
+  <!-- Month selector (same controls as the Reports page) -->
+  <div class="d-flex flex-wrap gap-2 align-items-center mb-4">
+    <a href="{{ url_for('dashboard', **prev_period) }}" class="btn btn-outline-secondary" aria-label="Previous month">
+      <i class="bi bi-chevron-left"></i>
+    </a>
+    <form method="get" action="{{ url_for('dashboard') }}" class="d-flex gap-2">
+      <select name="month" class="form-select" aria-label="Month">
+        {% for name in month_names %}
+          <option value="{{ loop.index }}" {{ "selected" if loop.index == month }}>{{ name }}</option>
+        {% endfor %}
+      </select>
+      <input type="number" name="year" class="form-control" style="width: 6.5rem;"
+             min="2000" max="2100" value="{{ year }}" aria-label="Year">
+      <button type="submit" class="btn btn-outline-success">View</button>
+    </form>
+    <a href="{{ url_for('dashboard', **next_period) }}" class="btn btn-outline-secondary" aria-label="Next month">
+      <i class="bi bi-chevron-right"></i>
+    </a>
+    {% if not is_current_month %}
+      <a href="{{ url_for('dashboard') }}" class="btn btn-link link-success text-decoration-none">
+        <i class="bi bi-calendar-event me-1"></i>Back to this month
+      </a>
+    {% endif %}
+  </div>
+
   <!-- Summary cards, each with a small donut chart (drawn by SaveSipCharts.ring below;
        hover a ring for the amounts) -->
   {% set positive = balance >= 0 %}
@@ -30,14 +59,14 @@
       <div class="card border-0 shadow-sm h-100">
         <div class="card-body d-flex align-items-center gap-3">
           <div class="ss-donut">
-            <canvas id="incomeDonut" role="img" aria-label="Donut chart of this month's income by source"></canvas>
+            <canvas id="incomeDonut" role="img" aria-label="Donut chart of income by source in {{ month_name }}"></canvas>
             <span class="ss-donut-icon text-success" aria-hidden="true"><i class="bi bi-arrow-down-circle"></i></span>
           </div>
           <div class="min-w-0">
             <div class="text-muted small">Total Income</div>
             <div class="h4 fw-bold mb-0 text-success">{{ total_income|rm }}</div>
             <div class="small text-muted">
-              {% if income_source_count %}From {{ income_source_count }} source{{ "s" if income_source_count != 1 }}{% else %}No income yet this month{% endif %}
+              {% if income_source_count %}From {{ income_source_count }} source{{ "s" if income_source_count != 1 }}{% else %}No income in {{ month_name }}{% endif %}
             </div>
           </div>
         </div>
@@ -47,7 +76,7 @@
       <div class="card border-0 shadow-sm h-100">
         <div class="card-body d-flex align-items-center gap-3">
           <div class="ss-donut">
-            <canvas id="expensesDonut" role="img" aria-label="Donut chart of this month's expenses: essential, wants and unplanned"></canvas>
+            <canvas id="expensesDonut" role="img" aria-label="Donut chart of expenses in {{ month_name }}: essential, wants and unplanned"></canvas>
             <span class="ss-donut-icon text-danger" aria-hidden="true"><i class="bi bi-arrow-up-circle"></i></span>
           </div>
           <div class="min-w-0">
@@ -66,7 +95,7 @@
       <div class="card border-0 shadow-sm h-100">
         <div class="card-body d-flex align-items-center gap-3">
           <div class="ss-donut">
-            <canvas id="balanceDonut" role="img" aria-label="Donut chart of income spent and left this month"></canvas>
+            <canvas id="balanceDonut" role="img" aria-label="Donut chart of income spent and left in {{ month_name }}"></canvas>
             <span class="ss-donut-icon {{ 'text-primary' if positive else 'text-danger' }}" aria-hidden="true"><i class="bi bi-wallet2"></i></span>
           </div>
           <div class="min-w-0">
@@ -78,7 +107,7 @@
               {% elif total_income %}
                 <span><i class="ss-dot ss-dot-left"></i>{{ balance_share }}% of your income left</span>
               {% else %}
-                <span>Income minus expenses this month</span>
+                <span>Income minus expenses in {{ month_name }}</span>
               {% endif %}
             </div>
           </div>
@@ -153,7 +182,7 @@
     <div class="card-body">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="h6 fw-bold mb-0"><i class="bi bi-calculator me-1 text-success"></i>Budgets for {{ month_name }}</h2>
-        <a href="{{ url_for('set_budget') }}" class="btn btn-sm btn-outline-success">Manage budgets</a>
+        <a href="{{ url_for('set_budget', month=month, year=year) }}" class="btn btn-sm btn-outline-success">Manage budgets</a>
       </div>
       {% if budget_status %}
         <div class="row">
@@ -163,8 +192,8 @@
         </div>
       {% else %}
         <p class="text-muted mb-0">
-          You have not set any budgets for this month.
-          <a href="{{ url_for('set_budget') }}" class="link-success">Set one now</a> to get alerts before you overspend.
+          You have not set any budgets for {{ month_name }} {{ year }}.
+          <a href="{{ url_for('set_budget', month=month, year=year) }}" class="link-success">Set one now</a> to get alerts before you overspend.
         </p>
       {% endif %}
     </div>
@@ -192,16 +221,16 @@
                         {% if expense.description %}<div class="small text-muted">{{ expense.description }}</div>{% endif %}
                       </td>
                       <td class="text-end fw-semibold text-danger text-nowrap">{{ expense.amount|rm }}</td>
-                      <td>{{ row_actions(url_for('edit_expense', expense_id=expense.id, next=url_for('dashboard')),
+                      <td>{{ row_actions(url_for('edit_expense', expense_id=expense.id, next=back_url),
                                          url_for('delete_expense', expense_id=expense.id),
-                                         "expense", url_for('dashboard')) }}</td>
+                                         "expense", back_url) }}</td>
                     </tr>
                   {% endfor %}
                 </tbody>
               </table>
             </div>
           {% else %}
-            <p class="text-muted mb-0">No expenses yet. <a href="{{ url_for('add_expense') }}" class="link-success">Add your first expense</a>.</p>
+            <p class="text-muted mb-0">No expenses in {{ month_name }} {{ year }}. <a href="{{ url_for('add_expense') }}" class="link-success">Add an expense</a>.</p>
           {% endif %}
         </div>
       </div>
@@ -225,16 +254,16 @@
                         <div class="small text-muted">{{ income.payment_method }}</div>
                       </td>
                       <td class="text-end fw-semibold text-success text-nowrap">{{ income.amount|rm }}</td>
-                      <td>{{ row_actions(url_for('edit_income', income_id=income.id, next=url_for('dashboard')),
+                      <td>{{ row_actions(url_for('edit_income', income_id=income.id, next=back_url),
                                          url_for('delete_income', income_id=income.id),
-                                         "income", url_for('dashboard')) }}</td>
+                                         "income", back_url) }}</td>
                     </tr>
                   {% endfor %}
                 </tbody>
               </table>
             </div>
           {% else %}
-            <p class="text-muted mb-0">No income yet. <a href="{{ url_for('add_income') }}" class="link-success">Add your first income</a>.</p>
+            <p class="text-muted mb-0">No income in {{ month_name }} {{ year }}. <a href="{{ url_for('add_income') }}" class="link-success">Add income</a>.</p>
           {% endif %}
         </div>
       </div>
@@ -257,11 +286,11 @@
   SaveSipCharts.ring("balanceDonut", summaryCharts.balance);
 
   SaveSipCharts.pie("categoryChart", categoryTotals, {
-    emptyMessage: "No expenses recorded this month yet.",
+    emptyMessage: {{ ("No expenses recorded in " ~ month_name ~ ".")|tojson }},
   });
   SaveSipCharts.bar("socialMediaChart", socialMediaTotals, {
     label: "Spent",
-    emptyMessage: "No social-media-influenced spending this month. Nice!",
+    emptyMessage: {{ ("No social-media-influenced spending in " ~ month_name ~ ". Nice!")|tojson }},
   });
 </script>
 {% endblock %}
