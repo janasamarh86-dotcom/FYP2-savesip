@@ -307,17 +307,6 @@ def dashboard():
     incomes = incomes_for(start, end)
     expenses = expenses_for(start, end)
 
-    # DEBUG: shows in the server console / Render logs on every dashboard load.
-    # Remove once the month filter is confirmed working on the live site.
-    print(
-        f"[dashboard debug] user_id={current_user.id} args={dict(request.args)} "
-        f"selected_month={month} selected_year={year} "
-        f"range={start}..{end - timedelta(days=1)} incomes={len(incomes)} "
-        f"expenses={len(expenses)} total_income={total_income} "
-        f"db_host={db.engine.url.host}",
-        flush=True,
-    )
-
     prev_year, prev_month = shift_month(year, month, -1)
     next_year, next_month = shift_month(year, month, 1)
 
@@ -515,8 +504,9 @@ def add_income():
         )
         db.session.add(income)
         db.session.commit()
-        flash(f"Income of RM{income.amount:,.2f} from {income.source} added.", "success")
-        return redirect(url_for("dashboard"))
+        flash(f"Income of RM{income.amount:,.2f} from {income.source} "
+              f"on {income.date.strftime('%d %b %Y')} added.", "success")
+        return redirect(dashboard_url_for(income.date))
 
     return render_template("add_income.html", form=form)
 
@@ -538,10 +528,19 @@ def add_expense():
         )
         db.session.add(expense)
         db.session.commit()
-        flash(f"Expense of RM{expense.amount:,.2f} for {expense.category} added.", "success")
-        return redirect(url_for("dashboard"))
+        flash(f"Expense of RM{expense.amount:,.2f} for {expense.category} "
+              f"on {expense.date.strftime('%d %b %Y')} added.", "success")
+        return redirect(dashboard_url_for(expense.date))
 
     return render_template("add_expense.html", form=form)
+
+
+def dashboard_url_for(day):
+    """The Dashboard for the month containing day, so a record added with a
+    past date (e.g. last month) is visible straight after saving it."""
+    if (day.year, day.month) == (local_today().year, local_today().month):
+        return url_for("dashboard")
+    return url_for("dashboard", month=day.month, year=day.year)
 
 
 def _owned_or_404(model, record_id):
@@ -571,7 +570,8 @@ def edit_income(income_id):
         income.date = form.date.data
         income.description = form.description.data or None
         db.session.commit()
-        flash(f"Income of RM{income.amount:,.2f} from {income.source} updated.", "success")
+        flash(f"Income of RM{income.amount:,.2f} from {income.source} "
+              f"on {income.date.strftime('%d %b %Y')} updated.", "success")
         return redirect(_back_url())
 
     return render_template(
@@ -608,7 +608,8 @@ def edit_expense(expense_id):
         expense.date = form.date.data
         expense.description = form.description.data or None
         db.session.commit()
-        flash(f"Expense of RM{expense.amount:,.2f} for {expense.category} updated.", "success")
+        flash(f"Expense of RM{expense.amount:,.2f} for {expense.category} "
+              f"on {expense.date.strftime('%d %b %Y')} updated.", "success")
         return redirect(_back_url())
 
     return render_template(
