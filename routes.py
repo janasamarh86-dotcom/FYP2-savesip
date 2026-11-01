@@ -153,24 +153,22 @@ def totals_by(model, column, start, end, keys):
     return totals
 
 
-def expenses_for(start, end, limit=None):
+def expenses_for(start, end):
     """Current user's expenses between start and end, newest first."""
     stmt = (
         select(Expense)
         .where(Expense.user_id == current_user.id, Expense.date >= start, Expense.date < end)
         .order_by(Expense.date.desc(), Expense.id.desc())
-        .limit(limit)
     )
     return db.session.scalars(stmt).all()
 
 
-def incomes_for(start, end, limit=None):
+def incomes_for(start, end):
     """Current user's incomes between start and end, newest first."""
     stmt = (
         select(Income)
         .where(Income.user_id == current_user.id, Income.date >= start, Income.date < end)
         .order_by(Income.date.desc(), Income.id.desc())
-        .limit(limit)
     )
     return db.session.scalars(stmt).all()
 
@@ -305,6 +303,21 @@ def dashboard():
     }
     social_media_total = sum(social_media_by_platform.values(), ZERO)
 
+    # Every income and expense in the selected month, newest first
+    incomes = incomes_for(start, end)
+    expenses = expenses_for(start, end)
+
+    # DEBUG: shows in the server console / Render logs on every dashboard load.
+    # Remove once the month filter is confirmed working on the live site.
+    print(
+        f"[dashboard debug] user_id={current_user.id} args={dict(request.args)} "
+        f"selected_month={month} selected_year={year} "
+        f"range={start}..{end - timedelta(days=1)} incomes={len(incomes)} "
+        f"expenses={len(expenses)} total_income={total_income} "
+        f"db_host={db.engine.url.host}",
+        flush=True,
+    )
+
     prev_year, prev_month = shift_month(year, month, -1)
     next_year, next_month = shift_month(year, month, 1)
 
@@ -335,8 +348,8 @@ def dashboard():
         },
         budget_status=budget_status(year, month, spent_by_category),
         # The 5 most recent records of the month being viewed
-        recent_expenses=expenses_for(start, end, limit=5),
-        recent_incomes=incomes_for(start, end, limit=5),
+        recent_expenses=expenses[:5],
+        recent_incomes=incomes[:5],
         category_chart=chart_series(spent_by_category),
         social_media_chart=chart_series(social_media_by_platform),
         planned=upcoming_planned(limit=5),
