@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Reports: {{ month_name }} {{ year }}{% endblock %}
+{% block title %}Reports: {{ period_label }}{% endblock %}
 
 {% block content %}
 {% from "_macros.html" import row_actions %}
@@ -21,7 +21,6 @@
 
 {% set month_names = ["January", "February", "March", "April", "May", "June", "July",
                       "August", "September", "October", "November", "December"] %}
-{% set days_in_month = charts.daily_spending.labels|length %}
 {% set positive = balance >= 0 %}
 {% set ns = namespace(influenced=0) %}
 {% for name, amount in expense_by_influence.items() if name != "None" %}
@@ -31,34 +30,60 @@
 <div class="container">
 
   <!-- Toolbar (not part of the PDF) -->
-  <div class="rpt-toolbar d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-3 mb-4">
-    <div>
-      <h1 class="h3 fw-bold mb-1">Reports</h1>
-      <p class="text-muted mb-0">Your monthly financial report for {{ month_name }} {{ year }}.</p>
+  <div class="rpt-toolbar mb-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-3">
+      <div>
+        <h1 class="h3 fw-bold mb-1">Reports</h1>
+        <p class="text-muted mb-0">Your financial report for {{ period_label }}.</p>
+      </div>
+      <!-- Both exports cover exactly the period on screen -->
+      <div class="d-flex flex-wrap gap-2">
+        <a href="{{ url_for('export_report', **export_args) }}" class="btn btn-outline-success">
+          <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export to Excel
+        </a>
+        <button type="button" id="download-pdf" class="btn btn-success">
+          <i class="bi bi-file-earmark-pdf me-1"></i>Download as PDF
+        </button>
+      </div>
     </div>
-    <div class="d-flex flex-wrap gap-2 align-items-center">
-      <a href="{{ url_for('reports', **prev_period) }}" class="btn btn-outline-secondary" aria-label="Previous month">
-        <i class="bi bi-chevron-left"></i>
-      </a>
-      <form method="get" action="{{ url_for('reports') }}" class="d-flex gap-2">
-        <select name="month" class="form-select" aria-label="Month">
-          {% for name in month_names %}
-            <option value="{{ loop.index }}" {{ "selected" if loop.index == month }}>{{ name }}</option>
-          {% endfor %}
-        </select>
-        <input type="number" name="year" class="form-control" style="width: 6.5rem;"
-               min="2000" max="2100" value="{{ year }}" aria-label="Year">
-        <button type="submit" class="btn btn-outline-success">View</button>
-      </form>
-      <a href="{{ url_for('reports', **next_period) }}" class="btn btn-outline-secondary" aria-label="Next month">
-        <i class="bi bi-chevron-right"></i>
-      </a>
-      <a href="{{ url_for('export_report', month=month, year=year) }}" class="btn btn-outline-success">
-        <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export to Excel
-      </a>
-      <button type="button" id="download-pdf" class="btn btn-success">
-        <i class="bi bi-file-earmark-pdf me-1"></i>Download as PDF
-      </button>
+
+    <!-- Period: a month or a custom date range (same controls as the Dashboard) -->
+    <div class="ss-period-bar">
+      <div class="ss-period-group{{ ' is-active' if not is_range }}">
+        <span class="ss-period-label">Month</span>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <a href="{{ url_for('reports', **prev_period) }}" class="btn btn-outline-secondary" aria-label="Previous month">
+            <i class="bi bi-chevron-left"></i>
+          </a>
+          <form method="get" action="{{ url_for('reports') }}" class="d-flex gap-2">
+            <select name="month" class="form-select" aria-label="Month">
+              {% for name in month_names %}
+                <option value="{{ loop.index }}" {{ "selected" if loop.index == month }}>{{ name }}</option>
+              {% endfor %}
+            </select>
+            <input type="number" name="year" class="form-control" style="width: 6.5rem;"
+                   min="2000" max="2100" value="{{ year }}" aria-label="Year">
+            <button type="submit" class="btn btn-outline-success">View</button>
+          </form>
+          <a href="{{ url_for('reports', **next_period) }}" class="btn btn-outline-secondary" aria-label="Next month">
+            <i class="bi bi-chevron-right"></i>
+          </a>
+        </div>
+      </div>
+
+      <div class="ss-period-group{{ ' is-active' if is_range }}">
+        <span class="ss-period-label">Custom date range</span>
+        <form method="get" action="{{ url_for('reports') }}" class="d-flex flex-wrap gap-2 align-items-center">
+          <label class="visually-hidden" for="report-from">From</label>
+          <input type="date" id="report-from" name="start_date" class="form-control ss-date-input"
+                 value="{{ range_from }}" required>
+          <span class="text-muted small">to</span>
+          <label class="visually-hidden" for="report-to">To</label>
+          <input type="date" id="report-to" name="end_date" class="form-control ss-date-input"
+                 value="{{ range_to }}" required>
+          <button type="submit" class="btn btn-outline-success">Apply</button>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -86,8 +111,8 @@
           <img src="{{ url_for('static', filename='images/Logo.png') }}" alt="SaveSip logo" class="rpt-logo">
           <div class="rpt-heading">
             <div class="rpt-kicker">SaveSip &middot; Personal Finance</div>
-            <h2 class="rpt-title">Monthly Financial Report</h2>
-            <div class="rpt-period">Reporting period: 1&ndash;{{ days_in_month }} {{ month_name }} {{ year }}</div>
+            <h2 class="rpt-title">{{ "Financial Report" if is_range else "Monthly Financial Report" }}</h2>
+            <div class="rpt-period">Reporting period: {{ period_text }}</div>
           </div>
         </div>
         <div class="rpt-meta">
@@ -219,8 +244,8 @@
     <div class="rpt-block">
       <h3 class="rpt-section-title"><span>04</span>Trends</h3>
       <div class="rpt-grid-2">
-        {{ chart_card("daily", "Daily Spending", "Expenses for each day of " ~ month_name,
-                      "Bar chart of spending for each day of the month") }}
+        {{ chart_card("daily", spending_title, spending_subtitle,
+                      "Bar chart: " ~ spending_subtitle) }}
         {{ chart_card("trend", "Income vs. Expenses", "Last 6 months",
                       "Line chart of income and expenses over the last six months") }}
       </div>
@@ -233,6 +258,12 @@
     <!-- 05 Budget vs. Actual -->
     <section class="rpt-block">
       <h3 class="rpt-section-title"><span>05</span>Budget vs. Actual</h3>
+      {% if is_range and budget_status %}
+        <p class="rpt-note">
+          Each category's budgets for {{ budget_label }} added together, compared with
+          spending from {{ period_label }}.
+        </p>
+      {% endif %}
       {% if budget_status %}
         {% set total_budget = budget_status|sum(attribute="budget") %}
         {% set total_spent = budget_status|sum(attribute="spent") %}
@@ -255,7 +286,10 @@
           <tbody>
             {% for status in budget_status %}
               <tr>
-                <td class="fw-semibold">{{ status.category }}</td>
+                <td class="fw-semibold">
+                  {{ status.category }}
+                  {% if status.months and "+" in status.months %}<span class="rpt-months">({{ status.months }})</span>{% endif %}
+                </td>
                 <td class="num">{{ status.budget|rm }}</td>
                 <td class="num">{{ status.spent|rm }}</td>
                 <td class="num {{ 'text-danger fw-semibold' if status.over }}">{{ status.remaining|rm }}</td>
@@ -285,7 +319,7 @@
         </table>
         </div>
       {% else %}
-        <p class="rpt-empty mb-0">No budgets were set for {{ month_name }} {{ year }}.</p>
+        <p class="rpt-empty mb-0">No budgets were set for {{ budget_label if is_range else month_name ~ " " ~ year }}.</p>
       {% endif %}
     </section>
 
@@ -339,7 +373,7 @@
         </table>
         </div>
       {% else %}
-        <p class="rpt-empty mt-2 mb-4">No expenses recorded for this month.</p>
+        <p class="rpt-empty mt-2 mb-4">No expenses recorded for {{ period_label }}.</p>
       {% endif %}
 
       <div class="rpt-block">
@@ -383,7 +417,7 @@
         </table>
         </div>
       {% else %}
-        <p class="rpt-empty mt-2 mb-0">No income recorded for this month.</p>
+        <p class="rpt-empty mt-2 mb-0">No income recorded for {{ period_label }}.</p>
       {% endif %}
     </section>
 
@@ -397,8 +431,10 @@
 <script>
   // Data comes from the reports route; |tojson makes it safe JavaScript.
   const charts = {{ charts|tojson }};
-  const pdfFilename = {{ "SaveSip-Report-%d-%02d.pdf"|format(year, month)|tojson }};
-  const pdfFooterLabel = {{ ("SaveSip Monthly Financial Report  |  " ~ month_name ~ " " ~ year)|tojson }};
+  const pdfFilename = {{ ("SaveSip-Report-" ~ file_tag ~ ".pdf")|tojson }};
+  const pdfFooterLabel = {{ ("SaveSip " ~ ("Financial Report" if is_range else "Monthly Financial Report") ~ "  |  " ~ period_label)|tojson }};
+  const noExpenses = {{ ("No expenses recorded for " ~ period_label ~ ".")|tojson }};
+  const noIncome = {{ ("No income recorded for " ~ period_label ~ ".")|tojson }};
 
   const reportSheet = document.getElementById("report-content");
   const downloadButton = document.getElementById("download-pdf");
@@ -408,25 +444,25 @@
     const canvas = function (key) { return root.querySelector('canvas[data-chart="' + key + '"]'); };
     return [
       SaveSipCharts.pie(canvas("category"), charts.expense_by_category, {
-        emptyMessage: "No expenses recorded this month.",
+        emptyMessage: noExpenses,
       }),
       SaveSipCharts.bar(canvas("social-media"), charts.expense_by_influence, {
         label: "Spent",
-        emptyMessage: "No expenses recorded this month.",
+        emptyMessage: noExpenses,
       }),
       SaveSipCharts.pie(canvas("payment"), charts.expense_by_payment, {
         doughnut: true,
-        emptyMessage: "No expenses recorded this month.",
+        emptyMessage: noExpenses,
       }),
       SaveSipCharts.bar(canvas("income-source"), charts.income_by_source, {
         label: "Received",
         horizontal: true,
-        emptyMessage: "No income recorded this month.",
+        emptyMessage: noIncome,
       }),
       SaveSipCharts.bar(canvas("daily"), charts.daily_spending, {
         label: "Spent",
         color: SaveSipCharts.colors.violet,
-        emptyMessage: "No expenses recorded this month.",
+        emptyMessage: noExpenses,
       }),
       SaveSipCharts.line(canvas("trend"), charts.trend.labels, [
         { label: "Income", data: charts.trend.income, color: SaveSipCharts.colors.teal },

@@ -2151,6 +2151,21 @@ main {
   color: var(--ss-muted);
 }
 
+/* Custom date range report: explains the combined budgets, and the months
+   each budget row adds together, e.g. "(Oct + Nov)" */
+.rpt-note {
+  margin: -0.25rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--ss-muted);
+}
+
+.rpt-months {
+  margin-left: 0.25rem;
+  font-weight: 400;
+  font-size: 0.85em;
+  color: var(--ss-muted);
+}
+
 /* Page breaks only matter in the PDF */
 .html2pdf__page-break {
   height: 0;

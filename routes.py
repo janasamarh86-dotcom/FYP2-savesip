@@ -112,14 +112,15 @@ def requested_period():
     return year, month
 
 
-def requested_range():
-    """Read a custom date range ?from=YYYY-MM-DD&to=YYYY-MM-DD from the URL.
+def requested_range(from_key="from", to_key="to"):
+    """Read a custom date range ?from=YYYY-MM-DD&to=YYYY-MM-DD from the URL
+    (the Reports page names them start_date and end_date instead).
 
     Returns (first day, last day), both included, or None when no range was
     asked for. An incomplete or impossible range shows a warning and
     returns None, so the page falls back to the month view.
     """
-    raw_from, raw_to = request.args.get("from"), request.args.get("to")
+    raw_from, raw_to = request.args.get(from_key), request.args.get(to_key)
     if not raw_from and not raw_to:
         return None
     try:
@@ -915,11 +916,83 @@ def delete_budget(budget_id):
 # Reports
 # ---------------------------------------------------------------------------
 
+def report_period():
+    """The period a report covers: a custom date range
+    (?start_date=&end_date=) or a month (?month=&year=, the current month by
+    default). Used by the Reports page and the Excel export, so both always
+    cover the same dates; the PDF is made from the Reports page.
+
+    start is included and end is not; first and last are the first and last
+    days shown.
+    """
+    custom_range = requested_range("start_date", "end_date")
+    if custom_range:
+        first, last = custom_range
+        return {
+            "is_range": True,
+            "first": first,
+            "last": last,
+            "start": first,
+            "end": last + timedelta(days=1),
+            "year": last.year,  # the month selector shows the end date's month
+            "month": last.month,
+            "label": format_range(first, last),
+            "period_text": format_range(first, last),
+            "file_tag": f"{first.isoformat()}_to_{last.isoformat()}",
+        }
+    year, month = requested_period()
+    start, end = month_bounds(year, month)
+    last = end - timedelta(days=1)
+    return {
+        "is_range": False,
+        "first": start,
+        "last": last,
+        "start": start,
+        "end": end,
+        "year": year,
+        "month": month,
+        "label": f"{calendar.month_name[month]} {year}",
+        "period_text": f"1–{last.day} {calendar.month_name[month]} {year}",
+        "file_tag": f"{year}-{month:02d}",
+    }
+
+
+# Up to this many days the spending chart has a bar per day; longer custom
+# ranges get a bar per month instead
+DAILY_CHART_MAX_DAYS = 62
+
+
+def spending_over_time(period):
+    """Spending chart data for the period: (title, subtitle, series)."""
+    start, end = period["start"], period["end"]
+    if (end - start).days <= DAILY_CHART_MAX_DAYS:
+        days = [start + timedelta(days=offset) for offset in range((end - start).days)]
+        totals = totals_by(Expense, Expense.date, start, end, days)
+        if period["is_range"]:
+            # A range can cross months, so each bar is labelled e.g. "25 Oct"
+            labels = [day.strftime("%d %b") for day in days]
+            subtitle = f"Expenses for each day, {period['label']}"
+        else:
+            labels = [str(day.day) for day in days]
+            subtitle = f"Expenses for each day of {calendar.month_name[period['month']]}"
+        return "Daily Spending", subtitle, chart_series(totals, labels=labels)
+
+    totals = {}
+    year, month = start.year, start.month
+    while (year, month) <= (period["last"].year, period["last"].month):
+        month_start, month_end = month_bounds(year, month)
+        label = f"{calendar.month_abbr[month]} {year}"
+        totals[label] = total_for(Expense, max(month_start, start), min(month_end, end))
+        year, month = shift_month(year, month, 1)
+    return "Monthly Spending", f"Expenses for each month, {period['label']}", chart_series(totals)
+
+
 @app.route("/reports")
 @login_required
 def reports():
-    year, month = requested_period()
-    start, end = month_bounds(year, month)
+    period = report_period()
+    start, end = period["start"], period["end"]
+    year, month = period["year"], period["month"]
 
     income_by_source = totals_by(Income, Income.source, start, end, INCOME_SOURCES)
     expense_by_category = totals_by(Expense, Expense.category, start, end, CATEGORIES)
@@ -931,10 +1004,10 @@ def reports():
     )
     type_totals = totals_by(Expense, Expense.expense_type, start, end, EXPENSE_TYPES)
 
-    days = [start + timedelta(days=offset) for offset in range((end - start).days)]
-    daily_spending = totals_by(Expense, Expense.date, start, end, days)
+    spending_title, spending_subtitle, spending_series = spending_over_time(period)
 
-    # Income vs expenses for the selected month and the 5 months before it
+    # Income vs expenses for the selected month (in a custom range, the
+    # month of its end date) and the 5 months before it
     trend_labels, trend_income, trend_expenses = [], [], []
     for offset in range(-5, 1):
         trend_year, trend_month = shift_month(year, month, offset)
@@ -951,9 +1024,7 @@ def reports():
         "expense_by_category": chart_series(expense_by_category),
         "expense_by_payment": chart_series(expense_by_payment),
         "expense_by_influence": chart_series(expense_by_influence),
-        "daily_spending": chart_series(
-            daily_spending, labels=[str(day.day) for day in days]
-        ),
+        "daily_spending": spending_series,
         "trend": {
             "labels": trend_labels,
             "income": trend_income,
@@ -964,11 +1035,30 @@ def reports():
     prev_year, prev_month = shift_month(year, month, -1)
     next_year, next_month = shift_month(year, month, 1)
 
+    if period["is_range"]:
+        # Each category's budgets for every month the range touches, added
+        # together (as on the Dashboard)
+        budgets = budget_status_for_range(period["first"], period["last"], expense_by_category)
+        export_args = {"start_date": period["first"].isoformat(), "end_date": period["last"].isoformat()}
+    else:
+        budgets = budget_status(year, month, expense_by_category)
+        export_args = {"month": month, "year": year}
+
     return render_template(
         "reports.html",
         month=month,
         year=year,
         month_name=calendar.month_name[month],
+        is_range=period["is_range"],
+        period_label=period["label"],
+        period_text=period["period_text"],
+        file_tag=period["file_tag"],
+        export_args=export_args,
+        range_from=period["first"].isoformat(),
+        range_to=period["last"].isoformat(),
+        budget_label=format_months(period["first"], period["last"]),
+        spending_title=spending_title,
+        spending_subtitle=spending_subtitle,
         prev_period={"year": prev_year, "month": prev_month},
         next_period={"year": next_year, "month": next_month},
         total_income=total_income,
@@ -979,7 +1069,7 @@ def reports():
         expense_by_payment=expense_by_payment,
         expense_by_influence=expense_by_influence,
         type_totals=type_totals,
-        budget_status=budget_status(year, month, expense_by_category),
+        budget_status=budgets,
         expenses=expenses_for(start, end),
         incomes=incomes_for(start, end),
         charts=charts,
@@ -996,9 +1086,10 @@ def _spreadsheet_safe(text):
 @app.route("/reports/export")
 @login_required
 def export_report():
-    """Download the month's transactions as a CSV file that opens in Excel."""
-    year, month = requested_period()
-    start, end = month_bounds(year, month)
+    """Download the report's transactions (a month or a custom date range,
+    see report_period()) as a CSV file that opens in Excel."""
+    period = report_period()
+    start, end = period["start"], period["end"]
     expenses = expenses_for(start, end)
     incomes = incomes_for(start, end)
 
@@ -1022,7 +1113,7 @@ def export_report():
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow([f"SaveSip transactions - {calendar.month_name[month]} {year}"])
+    writer.writerow([f"SaveSip transactions - {period['label']}"])
     writer.writerow([])
     writer.writerow(["Date", "Type", "Category / Source", "Expense Type", "Payment Method",
                      "Social Media", "Notes", "Amount (RM)"])
@@ -1032,7 +1123,7 @@ def export_report():
     writer.writerow(["", "", "", "", "", "", "Total expenses", f"{total_expenses:.2f}"])
     writer.writerow(["", "", "", "", "", "", "Balance", f"{total_income - total_expenses:.2f}"])
 
-    filename = f"SaveSip-Transactions-{year}-{month:02d}.csv"
+    filename = f"SaveSip-Transactions-{period['file_tag']}.csv"
     # The byte-order mark makes Excel read the file as UTF-8
     return Response(
         "\ufeff" + buffer.getvalue(),
