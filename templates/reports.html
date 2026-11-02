@@ -84,6 +84,12 @@
           <button type="submit" class="btn btn-outline-success">Apply</button>
         </form>
       </div>
+
+      {% if not is_current_month %}
+        <a href="{{ url_for('reports', **this_month) }}" class="btn btn-link link-success text-decoration-none align-self-end">
+          <i class="bi bi-calendar-event me-1"></i>Back to this month
+        </a>
+      {% endif %}
     </div>
   </div>
 

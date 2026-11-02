@@ -137,21 +137,39 @@ def requested_range(from_key="from", to_key="to"):
     return first, last
 
 
-# The custom range last applied on the Dashboard, kept in the session so the
-# Dashboard reopens on it after visiting other pages. Choosing a month
-# clears it, and so does logging in or out (the session is cleared).
+# The custom range last applied on the Dashboard / Reports page, kept in the
+# session so the page reopens on it after visiting other pages. Each page
+# remembers its own range. Choosing a month clears it, and so does logging
+# in or out (the session is cleared).
 RANGE_SESSION_KEY = "dashboard_range"
+REPORT_RANGE_SESSION_KEY = "reports_range"
 
 
-def saved_range():
-    """The custom date range saved in the session, as (first, last), or None."""
-    stored = session.get(RANGE_SESSION_KEY)
+def saved_range(key=RANGE_SESSION_KEY):
+    """The custom date range saved in the session under key, as
+    (first, last), or None."""
+    stored = session.get(key)
     try:
         first, last = (date.fromisoformat(value) for value in stored)
     except (TypeError, ValueError):
-        session.pop(RANGE_SESSION_KEY, None)
+        session.pop(key, None)
         return None
     return (first, last) if first <= last else None
+
+
+def sticky_range(key, from_key="from", to_key="to"):
+    """The custom date range for a page that remembers it (Dashboard,
+    Reports). A range in the URL is used and saved; a month in the URL
+    clears the saved range; a plain visit with no URL arguments reopens the
+    saved range. Returns (first, last) or None for the month view."""
+    custom_range = requested_range(from_key, to_key)
+    if custom_range:
+        session[key] = [custom_range[0].isoformat(), custom_range[1].isoformat()]
+    elif "month" in request.args or "year" in request.args:
+        session.pop(key, None)
+    elif not request.args:
+        custom_range = saved_range(key)
+    return custom_range
 
 
 def format_months(first, last):
@@ -390,14 +408,7 @@ def dashboard():
     # An applied range is saved in the session (sticky): a plain /dashboard
     # visit, e.g. from the sidebar, reopens it. Choosing a month clears it.
     today = local_today()
-    custom_range = requested_range()
-    if custom_range:
-        session[RANGE_SESSION_KEY] = [custom_range[0].isoformat(), custom_range[1].isoformat()]
-    elif "month" in request.args or "year" in request.args:
-        session.pop(RANGE_SESSION_KEY, None)
-    elif not request.args:
-        custom_range = saved_range()
-
+    custom_range = sticky_range(RANGE_SESSION_KEY)
     if custom_range:
         first, last = custom_range
         start, end = first, last + timedelta(days=1)
@@ -916,16 +927,24 @@ def delete_budget(budget_id):
 # Reports
 # ---------------------------------------------------------------------------
 
-def report_period():
+def report_period(remember=False):
     """The period a report covers: a custom date range
     (?start_date=&end_date=) or a month (?month=&year=, the current month by
     default). Used by the Reports page and the Excel export, so both always
     cover the same dates; the PDF is made from the Reports page.
 
+    remember=True (the Reports page) makes the range sticky like the
+    Dashboard's: saved in the session and reopened on a plain /reports
+    visit. The export always gets its dates in the link and never changes
+    the saved range.
+
     start is included and end is not; first and last are the first and last
     days shown.
     """
-    custom_range = requested_range("start_date", "end_date")
+    if remember:
+        custom_range = sticky_range(REPORT_RANGE_SESSION_KEY, "start_date", "end_date")
+    else:
+        custom_range = requested_range("start_date", "end_date")
     if custom_range:
         first, last = custom_range
         return {
@@ -990,7 +1009,7 @@ def spending_over_time(period):
 @app.route("/reports")
 @login_required
 def reports():
-    period = report_period()
+    period = report_period(remember=True)
     start, end = period["start"], period["end"]
     year, month = period["year"], period["month"]
 
@@ -1050,6 +1069,9 @@ def reports():
         year=year,
         month_name=calendar.month_name[month],
         is_range=period["is_range"],
+        # "Back to this month" sends the month explicitly, which clears a saved range
+        is_current_month=not period["is_range"] and (year, month) == (local_today().year, local_today().month),
+        this_month={"year": local_today().year, "month": local_today().month},
         period_label=period["label"],
         period_text=period["period_text"],
         file_tag=period["file_tag"],
