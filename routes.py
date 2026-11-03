@@ -11,6 +11,7 @@ import hashlib
 import io
 import re
 import time
+from collections import namedtuple
 from datetime import date, timedelta
 from decimal import Decimal
 from urllib.parse import urlsplit
@@ -137,7 +138,8 @@ def requested_range(from_key="from", to_key="to"):
     return first, last
 
 
-# The custom range last applied on the Dashboard / Reports page, kept in the
+# The custom range last applied on the Dashboard / Reports / Suggestions
+# page (SUGGESTIONS_RANGE_SESSION_KEY is defined with its route), kept in the
 # session so the page reopens on it after visiting other pages. Each page
 # remembers its own range. Choosing a month clears it, and so does logging
 # in or out (the session is cleared).
@@ -159,7 +161,7 @@ def saved_range(key=RANGE_SESSION_KEY):
 
 def sticky_range(key, from_key="from", to_key="to"):
     """The custom date range for a page that remembers it (Dashboard,
-    Reports). A range in the URL is used and saved; a month in the URL
+    Reports, Suggestions). A range in the URL is used and saved; a month in the URL
     clears the saved range; a plain visit with no URL arguments reopens the
     saved range. Returns (first, last) or None for the month view."""
     custom_range = requested_range(from_key, to_key)
@@ -216,6 +218,17 @@ def total_for(model, start, end, *criteria):
         *criteria,
     )
     return to_money(db.session.scalar(stmt))
+
+
+def balance_before(day):
+    """Money left over from before day: all of the current user's income
+    before day minus all their expenses before day (never below zero, as an
+    overspend cannot be carried into the next month)."""
+    def total_before(model):
+        return to_money(db.session.scalar(
+            select(func.sum(model.amount)).where(model.user_id == current_user.id, model.date < day)
+        ))
+    return max(total_before(Income) - total_before(Expense), ZERO)
 
 
 def totals_by(model, column, start, end, keys):
@@ -420,7 +433,13 @@ def dashboard():
         period_label = f"{calendar.month_name[month]} {year}"
 
     income_by_source = totals_by(Income, Income.source, start, end, INCOME_SOURCES)
-    total_income = sum(income_by_source.values(), ZERO)
+    received = sum(income_by_source.values(), ZERO)
+    # Month view: Total Income also counts the money carried over from
+    # earlier months, so income received on 25 Oct is still there in
+    # November (minus what was already spent of it). Total Expenses stays
+    # the month's own spending. A custom range shows only its own income.
+    carried_over = ZERO if custom_range else balance_before(start)
+    total_income = received + carried_over
     spent_by_category = totals_by(Expense, Expense.category, start, end, CATEGORIES)
     total_expenses = sum(spent_by_category.values(), ZERO)
     type_totals = totals_by(Expense, Expense.expense_type, start, end, EXPENSE_TYPES)
@@ -468,6 +487,9 @@ def dashboard():
         prev_period={"year": prev_year, "month": prev_month},
         next_period={"year": next_year, "month": next_month},
         total_income=total_income,
+        received=received,
+        carried_over=carried_over,
+        carried_from=calendar.month_name[shift_month(year, month, -1)[1]],
         total_expenses=total_expenses,
         balance=balance,
         balance_share=share_of(max(balance, ZERO), total_income),
@@ -476,7 +498,7 @@ def dashboard():
         social_media_total=social_media_total,
         # Small donut charts beside the three summary figures
         summary_charts={
-            "income": chart_series(income_by_source),
+            "income": chart_series(dict(income_by_source, **{"Carried over": carried_over})),
             "expenses": chart_series(
                 type_totals, labels=[EXPENSE_TYPE_LABELS[key] for key in type_totals]
             ),
@@ -672,9 +694,10 @@ def add_expense():
             date=form.date.data,
             description=form.description.data or None,
         )
+        expense.category_other, expense.social_media_other = form.other_details()
         db.session.add(expense)
         db.session.commit()
-        flash(f"Expense of RM{expense.amount:,.2f} for {expense.category} "
+        flash(f"Expense of RM{expense.amount:,.2f} for {expense.category_label} "
               f"on {expense.date.strftime('%d %b %Y')} added.", "success")
         return redirect(dashboard_url_for(expense.date))
 
@@ -758,8 +781,9 @@ def edit_expense(expense_id):
         expense.expense_type = form.expense_type.data
         expense.date = form.date.data
         expense.description = form.description.data or None
+        expense.category_other, expense.social_media_other = form.other_details()
         db.session.commit()
-        flash(f"Expense of RM{expense.amount:,.2f} for {expense.category} "
+        flash(f"Expense of RM{expense.amount:,.2f} for {expense.category_label} "
               f"on {expense.date.strftime('%d %b %Y')} updated.", "success")
         return redirect(_back_url())
 
@@ -776,7 +800,7 @@ def edit_expense(expense_id):
 @login_required
 def delete_expense(expense_id):
     expense = _owned_or_404(Expense, expense_id)
-    message = f"Deleted expense of RM{expense.amount:,.2f} for {expense.category}."
+    message = f"Deleted expense of RM{expense.amount:,.2f} for {expense.category_label}."
     db.session.delete(expense)
     db.session.commit()
     flash(message, "info")
@@ -1118,9 +1142,9 @@ def export_report():
     rows = []
     for expense in expenses:
         rows.append((expense.date, expense.id, [
-            expense.date.isoformat(), "Expense", expense.category, expense.type_label,
-            expense.payment_method,
-            expense.social_media_influence if expense.is_social_media_influenced else "",
+            expense.date.isoformat(), "Expense", _spreadsheet_safe(expense.category_label),
+            expense.type_label, expense.payment_method,
+            _spreadsheet_safe(expense.platform_label) if expense.is_social_media_influenced else "",
             _spreadsheet_safe(expense.description), f"{expense.amount:.2f}",
         ]))
     for income in incomes:
@@ -1296,38 +1320,102 @@ NOTIFICATION_LIMIT = 3
 # appears (only for users who turned on Monthly report reminders)
 MONTHLY_REMINDER_DAYS = 7
 
-# Reasons a user can write in an expense's notes. A Want, or anything found
-# through social media, whose note matches one of these was planned, so it
-# is never flagged as an impulse buy. Checked in this order. Each entry is
-# (label shown in the interface, words to look for, phrase for the message).
-NOTE_REASONS = [
-    ("Emergency", ["emergency", "urgent", "broken", "repair", "replace", "replacement"],
-     "this was an emergency"),
-    ("Health", ["medicine", "medical", "clinic", "hospital", "doctor", "pharmacy", "sick"],
-     "this was for your health"),
-    ("Planned gift", ["gift", "gifts", "present", "hadiah", "mom", "mum", "mother",
-                      "dad", "father", "parents", "family"],
-     "this was a planned gift"),
-    ("Study", ["study", "studying", "revision", "class", "lecture", "assignment", "exam",
-               "library", "textbook", "book", "books", "course", "project"],
-     "this was for your studies"),
-    ("Work", ["work", "interview", "internship"], "this was for work"),
-    ("Clear purpose", ["cafe", "café", "birthday", "planned", "needed", "required"], "you had a clear reason"),
+# Context words: reasons a user can give in an expense's notes. A Want, or
+# anything found through social media, whose note contains one of these
+# was planned or necessary, so it is never flagged as an impulse buy.
+#
+# The whole note is read, not just exact words: it is lower-cased and its
+# punctuation removed, then every context below is looked for anywhere in
+# it. Phrases ("missed the bus") may span several words, and plurals and
+# possessives also count ("buses", "mom's"). When a note matches more than
+# one context, the first one in this order names the card.
+#
+# Each entry: label shown in the interface -> words to look for, and the
+# phrase used in the message ("Since ...").
+CONTEXT_WORDS = {
+    "Emergency": {
+        "words": ["emergency", "urgent", "broke", "broken", "repair", "replace",
+                  "replacement", "sick", "hospital"],
+        "phrase": "this was an emergency",
+    },
+    "Health": {
+        "words": ["medicine", "medical", "clinic", "doctor", "pharmacy"],
+        "phrase": "this was for your health",
+    },
+    "Transport": {
+        "words": ["bus", "grab", "fare", "missed the bus", "shuttle", "taxi", "e-hailing",
+                  "train", "lrt", "mrt", "petrol", "toll", "parking"],
+        "phrase": "this was for getting around",
+    },
+    "Tech/Study": {
+        "words": ["laptop", "charger", "printing", "print", "printer", "assignment", "project",
+                  "study", "studying", "revision", "class", "lecture", "exam", "library",
+                  "textbook", "book", "course", "stationery", "calculator"],
+        "phrase": "this was for your studies",
+    },
+    "Planned gift": {
+        "words": ["gift", "present", "hadiah", "mom", "mum", "mother", "dad", "father",
+                  "parents", "family"],
+        "phrase": "this was a planned gift",
+    },
+    "Work": {
+        "words": ["work", "interview", "internship"],
+        "phrase": "this was for work",
+    },
+    "Clear purpose": {
+        "words": ["cafe", "café", "birthday", "planned", "needed", "required"],
+        "phrase": "you had a clear reason",
+    },
+}
+
+
+def _normalise_note(text):
+    """A note as plain lower-case words separated by single spaces, e.g.
+    "Missed the BUS -- took a Grab!" -> "missed the bus took a grab"."""
+    return " ".join(re.findall(r"[^\W_]+(?:'s)?", text.lower()))
+
+
+def _context_pattern(words):
+    """One regular expression matching any of words (or phrases) as whole
+    words, also in their plural or possessive form."""
+    terms = sorted((_normalise_note(word) for word in words), key=len, reverse=True)
+    return re.compile(
+        r"\b(" + "|".join(re.escape(term) for term in terms) + r")(?:es|s|'s)?\b"
+    )
+
+
+_CONTEXT_PATTERNS = [
+    (label, _context_pattern(entry["words"]), entry["phrase"])
+    for label, entry in CONTEXT_WORDS.items()
 ]
-_NOTE_REASON_PATTERNS = [
-    (label, re.compile(r"\b(?:" + "|".join(re.escape(word) for word in words) + r")\b", re.IGNORECASE), phrase)
-    for label, words, phrase in NOTE_REASONS
-]
+# Each normalised term -> the word as written in CONTEXT_WORDS ("e hailing" -> "e-hailing")
+_CONTEXT_TERMS = {
+    _normalise_note(word): word for entry in CONTEXT_WORDS.values() for word in entry["words"]
+}
+
+# The context found in a note: label and phrase of the main context (the
+# first in CONTEXT_WORDS order) and every context word found, in the order
+# they appear in the note (e.g. ["missed the bus", "grab"])
+NoteContext = namedtuple("NoteContext", "label phrase words")
 
 
 def note_reason(expense):
-    """The reason found in an expense's notes as (label, phrase), or None."""
+    """The context found anywhere in an expense's notes, or None."""
     if not expense.description:
         return None
-    for label, pattern, phrase in _NOTE_REASON_PATTERNS:
-        if pattern.search(expense.description):
-            return label, phrase
-    return None
+    note = _normalise_note(expense.description)
+    found = []  # (position in the note, label, phrase, word as written)
+    for label, pattern, phrase in _CONTEXT_PATTERNS:
+        for match in pattern.finditer(note):
+            term = match.group(1)
+            # Keep a plural or possessive ending, e.g. "buses", "mom's"
+            word = _CONTEXT_TERMS[term] + match.group(0)[len(term):]
+            found.append((match.start(), label, phrase, word))
+    if not found:
+        return None
+    _, label, phrase, _ = found[0]  # contexts were searched in priority order
+    words = list(dict.fromkeys(word for _, _, _, word in sorted(found)))
+    return NoteContext(label, phrase, words)
 
 
 def _suggestion(level, title, message, expenses=None, notify=False, url=None, kind=None):
@@ -1393,24 +1481,27 @@ def _note_card(expense, reason):
             counted = f"it counts toward your {where} impulse buys"
         else:
             title = "Counted as a want"
-            counted = "it counts as a want this month"
+            counted = "it counts as a want"
         verdict = (f"We couldn't find a reason such as a gift, your studies or an emergency "
                    f"in it, so {counted}. If it was planned, edit the note to say why.")
 
     after_quote = "" if note[-1] in ".!?" else "."
     card = _suggestion(level, title, f"{lead} Your note says “{note}”{after_quote} {verdict}", [expense])
     card.update({"expense": expense, "lead": lead, "note": note, "verdict": verdict,
-                 "label": label, "outcome": outcome, "flagged": flagged})
+                 "label": label, "outcome": outcome, "flagged": flagged,
+                 # Context words spotted in the note, e.g. ["missed the bus", "grab"]
+                 "context_words": reason.words if reason else []})
     return card
 
 
-def build_suggestions(year, month):
-    """Personalised suggestions from the current user's expenses in a month.
+def build_suggestions(year, month, custom_range=None):
+    """Personalised suggestions from the current user's expenses in a month,
+    or in custom_range ((first, last), both included) when given.
 
     Every expense's notes (description) are read:
     - Each expense with a note gets its own card that quotes the note word
       for word and says how it was treated. A Want whose note gives a reason
-      (NOTE_REASONS, e.g. "Bought a gift for my mom") is never flagged as an
+      (CONTEXT_WORDS, e.g. "Bought a gift for my mom") is never flagged as an
       impulse buy, even when social media influenced it.
     - The note also decides whether a Want counts as an impulse buy in the
       summary cards below.
@@ -1425,16 +1516,25 @@ def build_suggestions(year, month):
       never treated as impulse buying.
     - Budgets: a warning when exceeded, and another at 80% or more of the
       budget. Both always reach the navbar bell (when budget alerts are on).
-    - Monthly report reminder in the last week of the month.
+      A custom range uses the budgets of every month it touches, added
+      together (as on the Dashboard).
+    - Monthly report reminder in the last week of the month (month view
+      only).
 
     The user's notification settings switch off social media warnings
     (notify_social), budget alerts (notify_budget) and the monthly reminder
     (notify_monthly).
 
-    Used by the Suggestions page and the navbar notifications. Returns the
-    summary items, the note cards and the month's summary figures.
+    Used by the Suggestions page and the navbar notifications (always the
+    current month). Returns the summary items, the note cards and the
+    period's summary figures.
     """
-    start, end = month_bounds(year, month)
+    if custom_range:
+        start, end = custom_range[0], custom_range[1] + timedelta(days=1)
+        when, rest_of = "in this period", "the rest of this period"
+    else:
+        start, end = month_bounds(year, month)
+        when, rest_of = "this month", "the rest of the month"
     expenses = expenses_for(start, end)
     show_social = current_user.notify_social
     show_budget = current_user.notify_budget
@@ -1477,7 +1577,7 @@ def build_suggestions(year, month):
             "positive",
             "Great job prioritising your essentials",
             f"You spent RM{needs_total:,.2f} on {plural(len(needs), 'essential')} "
-            f"this month, mainly on {', '.join(top_categories)}. "
+            f"{when}, mainly on {', '.join(top_categories)}. "
             f"That is {share_of(needs_total, total_spent)}% of your spending going "
             f"to things you actually need. Keep it up!",
             needs,
@@ -1493,7 +1593,7 @@ def build_suggestions(year, month):
                 "warning",
                 f"Watch out for {name} impulse buying",
                 f"You bought {plural(len(platform_expenses), 'want')} "
-                f"influenced by {name} this month, totalling RM{platform_total:,.2f} "
+                f"influenced by {name} {when}, totalling RM{platform_total:,.2f} "
                 f"({share_of(platform_total, total_spent)}% of your spending). "
                 f"{PLATFORM_TIPS[platform]}",
                 platform_expenses,
@@ -1506,7 +1606,7 @@ def build_suggestions(year, month):
             "warning",
             "Think twice before buying wants",
             f"You spent RM{other_total:,.2f} on "
-            f"{plural(len(other_wants), 'other want')} this month. "
+            f"{plural(len(other_wants), 'other want')} {when}. "
             f"Social media is not the only trigger for impulse buying. Before your next "
             f"want, ask yourself whether you would still buy it in a week.",
             other_wants,
@@ -1517,7 +1617,7 @@ def build_suggestions(year, month):
         unplanned_total = sum_amounts(unplanned)
         items.append(_suggestion(
             "info",
-            "Unplanned costs this month",
+            f"Unplanned costs {when}",
             f"You had {plural(len(unplanned), 'unplanned expense')} totalling "
             f"RM{unplanned_total:,.2f} ({share_of(unplanned_total, total_spent)}% of your "
             f"spending). Surprises happen. Putting a little into Savings each month "
@@ -1529,13 +1629,15 @@ def build_suggestions(year, month):
         items.append(_suggestion(
             "positive",
             "No social media impulse buys",
-            "None of your wants this month were impulse buys from TikTok, "
-            "Instagram, Shopee Live or any other platform. Nice self-control!",
+            f"None of your wants {when} were impulse buys from TikTok, "
+            f"Instagram, Shopee Live or any other platform. Nice self-control!",
         ))
 
     if show_budget:
         spent_by_category = totals_by(Expense, Expense.category, start, end, CATEGORIES)
-        for status in budget_status(year, month, spent_by_category):
+        statuses = (budget_status_for_range(custom_range[0], custom_range[1], spent_by_category)
+                    if custom_range else budget_status(year, month, spent_by_category))
+        for status in statuses:
             if status["over"]:
                 items.append(_suggestion(
                     "warning",
@@ -1543,7 +1645,7 @@ def build_suggestions(year, month):
                     f"You have spent RM{status['spent']:,.2f} of your "
                     f"RM{status['budget']:,.2f} {status['category']} budget "
                     f"({status['percent']}%). Try to hold off on {status['category']} "
-                    f"spending for the rest of the month.",
+                    f"spending for {rest_of}.",
                     notify=True,
                     kind="budget_over",
                 ))
@@ -1552,7 +1654,7 @@ def build_suggestions(year, month):
                     "warning",
                     f"{status['category']} budget {status['percent']}% used",
                     f"You have used {status['percent']}% of your {status['category']} "
-                    f"budget, with RM{status['remaining']:,.2f} left for this month. "
+                    f"budget, with RM{status['remaining']:,.2f} left for {rest_of}. "
                     f"Slow down on {status['category']} so you don't go over.",
                     notify=True,
                     kind="budget_near",
@@ -1560,8 +1662,8 @@ def build_suggestions(year, month):
 
     today = local_today()
     days_left = (end - today).days - 1
-    if current_user.notify_monthly and (today.year, today.month) == (year, month) \
-            and days_left <= MONTHLY_REMINDER_DAYS:
+    if current_user.notify_monthly and not custom_range \
+            and (today.year, today.month) == (year, month) and days_left <= MONTHLY_REMINDER_DAYS:
         month_name = calendar.month_name[month]
         items.append(_suggestion(
             "reminder",
@@ -1630,18 +1732,46 @@ def inject_notifications():
     }
 
 
+# The custom range last applied on the Suggestions page (see sticky_range())
+SUGGESTIONS_RANGE_SESSION_KEY = "suggestions_range"
+
+
 @app.route("/suggestions")
 @login_required
 def suggestions():
+    # A month (?month=&year=, the current month by default) or a custom date
+    # range (?from=&to=), remembered like the Dashboard's
     today = local_today()
-    result = build_suggestions(today.year, today.month)
+    custom_range = sticky_range(SUGGESTIONS_RANGE_SESSION_KEY)
+    if custom_range:
+        first, last = custom_range
+        year, month = last.year, last.month  # the month selector shows the To month
+        period_label = format_range(first, last)
+    else:
+        year, month = requested_period()
+        period_label = f"{calendar.month_name[month]} {year}"
+        first, end = month_bounds(year, month)
+        last = end - timedelta(days=1)
+    result = build_suggestions(year, month, custom_range)
+    prev_year, prev_month = shift_month(year, month, -1)
+    next_year, next_month = shift_month(year, month, 1)
     return render_template(
         "suggestions.html",
-        month_name=calendar.month_name[today.month],
-        year=today.year,
+        month=month,
+        year=year,
+        period_label=period_label,
+        is_range=custom_range is not None,
+        is_current_month=custom_range is None and (year, month) == (today.year, today.month),
+        # "Back to this month" sends the month explicitly, which clears a saved range
+        this_month={"year": today.year, "month": today.month},
+        prev_period={"year": prev_year, "month": prev_month},
+        next_period={"year": next_year, "month": next_month},
+        # The custom range inputs start on the period being shown
+        range_from=first.isoformat(),
+        range_to=last.isoformat(),
         suggestions=result["items"],
         note_cards=result["note_cards"],
-        note_reasons=[(label, words[:4]) for label, words, phrase in NOTE_REASONS],
+        context_words=[(label, entry["words"]) for label, entry in CONTEXT_WORDS.items()],
         total_spent=result["total_spent"],
         impulse_total=result["impulse_total"],
         expense_count=result["expense_count"],

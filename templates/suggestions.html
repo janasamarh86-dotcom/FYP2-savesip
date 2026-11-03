@@ -14,13 +14,18 @@
 {# Icon for each verdict on a note card (labels come from _note_card() in routes.py) #}
 {% set note_icons = {
   "Planned gift": "gift", "Health": "heart-pulse", "Emergency": "life-preserver",
-  "Study": "book", "Work": "briefcase", "Clear purpose": "check2-circle",
+  "Transport": "bus-front", "Tech/Study": "laptop", "Work": "briefcase", "Clear purpose": "check2-circle",
   "Essential": "shield-check", "Unplanned": "lightning-charge",
   "No clear reason": "exclamation-triangle",
 } %}
 {% set hidden_tips = [] %}
 {% if not current_user.notify_social %}{% set _ = hidden_tips.append("social media warnings") %}{% endif %}
 {% if not current_user.notify_budget %}{% set _ = hidden_tips.append("budget alerts") %}{% endif %}
+{# Edit links return here, to the period being viewed #}
+{% set back_url = request.full_path.rstrip('?') %}
+{% set month_names = ["January", "February", "March", "April", "May", "June", "July",
+                      "August", "September", "October", "November", "December"] %}
+{% set period_word = "period" if is_range else "month" %}
 
 <div class="container">
 
@@ -29,8 +34,53 @@
     <div>
       <span class="ss-eyebrow mb-1">Personalised for you</span>
       <h1 class="h3 fw-bold mb-1">Suggestions</h1>
-      <p class="text-muted mb-0">Tips based on your own spending and notes in {{ month_name }} {{ year }}.</p>
+      <p class="text-muted mb-0">Tips based on your own spending and notes in {{ period_label }}.</p>
     </div>
+  </div>
+
+  <!-- Period: a month or a custom date range (same controls as the Dashboard and Reports) -->
+  <div class="ss-period-bar mb-4">
+    <div class="ss-period-group{{ ' is-active' if not is_range }}">
+      <span class="ss-period-label">Month</span>
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <a href="{{ url_for('suggestions', **prev_period) }}" class="btn btn-outline-secondary" aria-label="Previous month">
+          <i class="bi bi-chevron-left"></i>
+        </a>
+        <form method="get" action="{{ url_for('suggestions') }}" class="d-flex gap-2">
+          <select name="month" class="form-select" aria-label="Month">
+            {% for name in month_names %}
+              <option value="{{ loop.index }}" {{ "selected" if loop.index == month }}>{{ name }}</option>
+            {% endfor %}
+          </select>
+          <input type="number" name="year" class="form-control" style="width: 6.5rem;"
+                 min="2000" max="2100" value="{{ year }}" aria-label="Year">
+          <button type="submit" class="btn btn-outline-success">View</button>
+        </form>
+        <a href="{{ url_for('suggestions', **next_period) }}" class="btn btn-outline-secondary" aria-label="Next month">
+          <i class="bi bi-chevron-right"></i>
+        </a>
+      </div>
+    </div>
+
+    <div class="ss-period-group{{ ' is-active' if is_range }}">
+      <span class="ss-period-label">Custom date range</span>
+      <form method="get" action="{{ url_for('suggestions') }}" class="d-flex flex-wrap gap-2 align-items-center">
+        <label class="visually-hidden" for="tips-from">From Date</label>
+        <input type="date" id="tips-from" name="from" class="form-control ss-date-input"
+               value="{{ range_from }}" required>
+        <span class="text-muted small">to</span>
+        <label class="visually-hidden" for="tips-to">To Date</label>
+        <input type="date" id="tips-to" name="to" class="form-control ss-date-input"
+               value="{{ range_to }}" required>
+        <button type="submit" class="btn btn-outline-success">Apply</button>
+      </form>
+    </div>
+
+    {% if not is_current_month %}
+      <a href="{{ url_for('suggestions', **this_month) }}" class="btn btn-link link-success text-decoration-none align-self-end">
+        <i class="bi bi-calendar-event me-1"></i>Back to this month
+      </a>
+    {% endif %}
   </div>
 
   {% if expense_count == 0 %}
@@ -38,7 +88,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-body text-center py-5">
         <div class="ss-tip-icon ss-tip-context mx-auto mb-3"><i class="bi bi-journal-plus"></i></div>
-        <h2 class="h5 fw-bold">No expenses logged this month yet</h2>
+        <h2 class="h5 fw-bold">No expenses logged in {{ period_label }}</h2>
         <p class="text-muted">Add your expenses, with a short note when there's a reason, and SaveSip will tailor tips to you.</p>
         <a href="{{ url_for('add_expense') }}" class="btn btn-success">
           <i class="bi bi-dash-circle me-1"></i>Add an Expense
@@ -91,7 +141,7 @@
                   <span class="ss-tip-chip">{{ card.label }}</span>
                   <h3 class="ss-tip-title mb-1">{{ card.title }}</h3>
                   <div class="ss-note-card-meta">
-                    <span>{{ expense.date.strftime("%d %b %Y") }} &middot; {{ expense.category }}</span>
+                    <span>{{ expense.date.strftime("%d %b %Y") }} &middot; {{ expense.category_label }}</span>
                     {{ expense_badges(expense) }}
                   </div>
                 </div>
@@ -105,13 +155,20 @@
                 <blockquote class="ss-note-quote-text">&ldquo;{{ card.note }}&rdquo;</blockquote>
               </figure>
 
+              {% if card.context_words %}
+                <div class="ss-context-found">
+                  <span class="ss-context-found-label"><i class="bi bi-search me-1"></i>Context found:</span>
+                  {% for word in card.context_words %}<span class="ss-context-word">{{ word }}</span>{% endfor %}
+                </div>
+              {% endif %}
+
               <p class="ss-note-card-verdict">{{ card.verdict }}</p>
 
               <footer class="ss-note-card-foot">
                 <span class="ss-outcome {{ 'is-flagged' if card.flagged else 'is-ok' }}">
                   <i class="bi bi-{{ 'exclamation-circle-fill' if card.flagged else 'check-circle-fill' }}"></i>{{ card.outcome }}
                 </span>
-                <a href="{{ url_for('edit_expense', expense_id=expense.id, next=url_for('suggestions')) }}" class="ss-tip-link mt-0">
+                <a href="{{ url_for('edit_expense', expense_id=expense.id, next=back_url) }}" class="ss-tip-link mt-0">
                   <i class="bi bi-pencil me-1"></i>Edit note
                 </a>
               </footer>
@@ -120,7 +177,7 @@
             <div class="ss-note-empty">
               <i class="bi bi-pencil-square"></i>
               <p class="mb-0">
-                None of this month's expenses have a note yet. When you log one, add a short note like
+                None of this {{ period_word }}'s expenses have a note yet. When you log one, add a short note like
                 <em>&ldquo;Bought a gift for my mom&rdquo;</em> or <em>&ldquo;study cafe before exams&rdquo;</em>
                 and SaveSip will quote it here and take it into account.
               </p>
@@ -132,7 +189,7 @@
         <section aria-labelledby="tips-heading">
           <div class="ss-section-head">
             <h2 class="ss-section-title" id="tips-heading">
-              <i class="bi bi-lightbulb-fill"></i>Your month at a glance
+              <i class="bi bi-lightbulb-fill"></i>Your {{ period_word }} at a glance
             </h2>
           </div>
 
@@ -160,7 +217,7 @@
                       {% for expense in suggestion.expenses %}
                         <li>
                           <span>
-                            {{ expense.date.strftime("%d %b") }} &middot; {{ expense.category }}
+                            {{ expense.date.strftime("%d %b") }} &middot; {{ expense.category_label }}
                             {% if expense.description %}&middot; <em>&ldquo;{{ expense.description }}&rdquo;</em>{% endif %}
                           </span>
                           <span class="fw-semibold text-nowrap">{{ expense.amount|rm }}</span>
@@ -191,11 +248,12 @@
             <h2 class="h6 fw-bold mb-0">How SaveSip reads your notes</h2>
           </div>
           <p class="small text-muted mb-3">
-            Every note is quoted back to you. When a Want's note gives one of these reasons,
-            it is treated as planned and never flagged as an impulse buy, even if social media influenced it.
+            Every note is quoted back to you, and the whole sentence is read for context.
+            When a Want's note mentions any of these (also as a plural, e.g. &ldquo;buses&rdquo;),
+            it is treated as planned or necessary and never flagged as an impulse buy, even if social media influenced it.
           </p>
           <ul class="list-unstyled mb-3">
-            {% for label, words in note_reasons %}
+            {% for label, words in context_words %}
               <li class="ss-reason">
                 <span class="ss-reason-icon" aria-hidden="true"><i class="bi bi-{{ note_icons.get(label, 'check2-circle') }}"></i></span>
                 <div class="min-w-0">

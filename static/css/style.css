@@ -1204,6 +1204,29 @@ main {
   overflow-wrap: anywhere;
 }
 
+/* Context words SaveSip spotted in the note */
+.ss-context-found {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.78rem;
+}
+
+.ss-context-found-label {
+  color: var(--ss-muted);
+  font-weight: 500;
+}
+
+.ss-context-word {
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(20, 184, 166, 0.12);
+  color: var(--ss-teal-dark);
+  font-weight: 600;
+}
+
 .ss-note-card-verdict {
   margin-bottom: 0.85rem;
   font-weight: 500;
@@ -1276,9 +1299,21 @@ main {
   .ss-note-quote-text { font-size: 1.08rem; }
 }
 
+/* Optional "What was it?" box under a dropdown set to Other (add_expense.html) */
+.ss-other-box {
+  margin-top: -0.25rem;
+  padding-left: 0.85rem;
+  border-left: 3px solid rgba(108, 92, 231, 0.35);
+}
+
 /* ------------------------------------------------------------------------
  * Dashboard summary donuts
  * --------------------------------------------------------------------- */
+.ss-carried {
+  color: #7c6cf0;
+  font-weight: 600;
+}
+
 .ss-donut {
   position: relative;
   flex-shrink: 0;

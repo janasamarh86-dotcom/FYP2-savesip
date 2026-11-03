@@ -30,6 +30,7 @@
     "Unplanned": "#4f46e5",
     "Spent": "#e5484d",
     "Left": "#6c5ce7",
+    "Carried over": "#a78bfa",
   };
 
   // Ring shown when a summary donut has nothing to show yet

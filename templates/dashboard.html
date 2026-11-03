@@ -87,7 +87,11 @@
             <div class="text-muted small">Total Income</div>
             <div class="h4 fw-bold mb-0 text-success">{{ total_income|rm }}</div>
             <div class="small text-muted">
-              {% if income_source_count %}From {{ income_source_count }} source{{ "s" if income_source_count != 1 }}{% else %}No income in {{ period_label }}{% endif %}
+              {% if carried_over %}
+                {# Month view: money left over from earlier months is still available #}
+                {{ received|rm }} received in {{ month_name }}
+                + <span class="ss-carried">{{ carried_over|rm }} carried over</span> from {{ carried_from }} and earlier
+              {% elif income_source_count %}From {{ income_source_count }} source{{ "s" if income_source_count != 1 }}{% else %}No income in {{ period_label }}{% endif %}
             </div>
           </div>
         </div>
@@ -258,7 +262,7 @@
                   {% for expense in recent_expenses %}
                     <tr>
                       <td class="text-nowrap">{{ expense.date.strftime("%d %b %Y") }}</td>
-                      <td>{{ expense.category }}</td>
+                      <td>{{ expense.category_label }}</td>
                       <td>
                         {{ expense_badges(expense) }}
                         {% if expense.description %}<div class="small text-muted">{{ expense.description }}</div>{% endif %}

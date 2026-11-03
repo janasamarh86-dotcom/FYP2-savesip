@@ -63,6 +63,10 @@ EXPENSE_TYPE_LABELS = {
 }
 
 
+# Longest description a user can type for an "Other" category or platform
+OTHER_DETAIL_MAX_LENGTH = 50
+
+
 # Password reset links stop working after this many seconds (30 minutes)
 RESET_TOKEN_MAX_AGE = 30 * 60
 
@@ -276,6 +280,11 @@ class Expense(db.Model):
     date = db.Column(db.Date, default=utc_today, nullable=False, index=True)
     description = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    # Optional: what an "Other" category or platform was (e.g. "Gym",
+    # "Facebook"). Left empty, the expense is simply "Other". Charts and
+    # budgets always group by category / social_media_influence.
+    category_other = db.Column(db.String(OTHER_DETAIL_MAX_LENGTH))
+    social_media_other = db.Column(db.String(OTHER_DETAIL_MAX_LENGTH))
 
     @validates("category")
     def _validate_category(self, key, value):
@@ -290,6 +299,21 @@ class Expense(db.Model):
         return _require_option(
             "social media influence", value, SOCIAL_MEDIA_INFLUENCE_OPTIONS
         )
+
+    @property
+    def category_label(self):
+        """Category shown in the interface, e.g. "Food", "Other (Gym)" or "Other"."""
+        if self.category == "Other" and self.category_other:
+            return f"Other ({self.category_other})"
+        return self.category
+
+    @property
+    def platform_label(self):
+        """Platform shown in the interface, e.g. "TikTok", "Facebook",
+        "Other platform" or "None"."""
+        if self.social_media_influence == "Other":
+            return self.social_media_other or "Other platform"
+        return self.social_media_influence
 
     @validates("expense_type")
     def _validate_expense_type(self, key, value):
@@ -405,6 +429,8 @@ def upgrade_schema():
     5. The "House Rent" category was removed; its records move to "Other".
        A House Rent budget is added to an existing Other budget for the
        same month instead (one budget per category per month).
+    6. Expense gained optional descriptions for an "Other" category and an
+       "Other" platform.
     """
     inspector = inspect(db.engine)
     tables = inspector.get_table_names()
@@ -433,6 +459,11 @@ def upgrade_schema():
                 ))
             if "is_essential" in expense_columns:
                 connection.execute(text("ALTER TABLE expenses DROP COLUMN is_essential"))
+            for column in ("category_other", "social_media_other"):
+                if column not in expense_columns:
+                    connection.execute(text(
+                        f"ALTER TABLE expenses ADD COLUMN {column} VARCHAR({OTHER_DETAIL_MAX_LENGTH})"
+                    ))
 
         if planned_columns is not None and "description" not in planned_columns:
             connection.execute(text("ALTER TABLE planned_expenses ADD COLUMN description VARCHAR(255)"))

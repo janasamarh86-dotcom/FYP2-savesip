@@ -361,10 +361,10 @@
             {% for expense in expenses %}
               <tr>
                 <td class="text-nowrap">{{ expense.date.strftime("%d %b") }}</td>
-                <td>{{ expense.category }}</td>
+                <td>{{ expense.category_label }}</td>
                 <td class="rpt-notes">{{ expense.description or "" }}</td>
                 <td>{{ expense.payment_method }}</td>
-                <td>{{ expense.social_media_influence if expense.is_social_media_influenced else "None" }}</td>
+                <td>{{ expense.platform_label }}</td>
                 <td class="text-center">{{ expense.type_label }}</td>
                 <td class="num">{{ expense.amount|rm }}</td>
                 <td class="rpt-no-print">{{ row_actions(url_for('edit_expense', expense_id=expense.id, next=back_url),

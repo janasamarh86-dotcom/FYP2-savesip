@@ -35,9 +35,16 @@
               <div class="col-sm-6">{{ render_field(form.category) }}</div>
               <div class="col-sm-6">{{ render_field(form.payment_method) }}</div>
             </div>
+            <!-- Shown only when "Other" is chosen; optional (blank saves as plain "Other") -->
+            <div class="ss-other-box" data-other-for="category">
+              {{ render_field(form.category_other, help="Leave blank to save it as Other.") }}
+            </div>
 
             {{ render_field(form.social_media_influence,
                             help="Did TikTok, Instagram, Shopee Live or another platform make you buy this? Choose None if not.") }}
+            <div class="ss-other-box" data-other-for="social_media_influence">
+              {{ render_field(form.social_media_other, help="Leave blank to save it as Other.") }}
+            </div>
 
             {{ render_field(form.date) }}
             {{ render_field(form.description, rows=3, placeholder="Optional, e.g. Bought a gift for my mom",
@@ -67,5 +74,21 @@
   }
   typeSelect.addEventListener("change", highlightType);
   highlightType();
+
+  // Show the optional "What was it?" / "Which platform?" box only while
+  // "Other" is selected. A hidden box is ignored when saving (forms.py).
+  document.querySelectorAll(".ss-other-box").forEach(function (box) {
+    const select = document.getElementById(box.dataset.otherFor);
+    function toggleBox() {
+      const isOther = select.value === "Other";
+      box.hidden = !isOther;
+      box.querySelector("input").disabled = !isOther;
+    }
+    select.addEventListener("change", function () {
+      toggleBox();
+      if (select.value === "Other") box.querySelector("input").focus();
+    });
+    toggleBox();
+  });
 </script>
 {% endblock %}

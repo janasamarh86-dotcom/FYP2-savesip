@@ -41,6 +41,7 @@ from models import (
     EXPENSE_TYPE_LABELS,
     EXPENSE_TYPES,
     INCOME_SOURCES,
+    OTHER_DETAIL_MAX_LENGTH,
     PAYMENT_METHODS,
     SOCIAL_MEDIA_INFLUENCE_OPTIONS,
     User,
@@ -293,11 +294,23 @@ class IncomeForm(FlaskForm):
     submit = SubmitField("Save Income")
 
 
+def _other_detail_field(label, placeholder):
+    """Optional text box shown when "Other" is chosen in a dropdown (see
+    add_expense.html). Left blank, the expense is saved as plain "Other"."""
+    return StringField(
+        label,
+        filters=[_strip],
+        validators=[Optional(), Length(max=OTHER_DETAIL_MAX_LENGTH)],
+        render_kw={"placeholder": placeholder, "maxlength": OTHER_DETAIL_MAX_LENGTH},
+    )
+
+
 class ExpenseForm(FlaskForm):
     amount = _amount_field()
     category = _required_select(
         "Category", "Select a category", CATEGORIES, "Please select a category."
     )
+    category_other = _other_detail_field("What was it? (optional)", "e.g. Gym membership")
     payment_method = SelectField(
         "Payment Method", choices=PAYMENT_METHODS, validators=[DataRequired()]
     )
@@ -307,6 +320,17 @@ class ExpenseForm(FlaskForm):
         SOCIAL_MEDIA_INFLUENCE_OPTIONS,
         "Please select a social media influence (choose None if there was none).",
     )
+    social_media_other = _other_detail_field("Which platform? (optional)", "e.g. Facebook")
+
+    def other_details(self):
+        """(category_other, social_media_other) to save: the text typed for
+        an "Other" choice, or None when it was left blank or "Other" was not
+        chosen (the box may still hold text from before the user changed
+        their mind)."""
+        def detail(select, text):
+            return (text.data or None) if select.data == "Other" else None
+        return (detail(self.category, self.category_other),
+                detail(self.social_media_influence, self.social_media_other))
     expense_type = _required_select(
         "Expense Type", "Select a type", EXPENSE_TYPE_CHOICES, "Please select an expense type."
     )
