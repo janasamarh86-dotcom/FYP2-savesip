@@ -121,8 +121,62 @@
     <div class="row g-4">
       <div class="col-xl-8">
 
-        <!-- From your notes: one card per expense with a note, quoting it exactly -->
-        <section class="mb-4" aria-labelledby="notes-heading">
+        <!-- At a glance: the overall tips for the period come first ... -->
+        <section class="mb-4" aria-labelledby="tips-heading">
+          <div class="ss-section-head">
+            <h2 class="ss-section-title" id="tips-heading">
+              <i class="bi bi-lightbulb-fill"></i>Your {{ period_word }} at a glance
+            </h2>
+          </div>
+
+          {% for suggestion in suggestions %}
+            {% set style = styles.get(suggestion.level, styles.info) %}
+            <article class="ss-tip ss-tip-{{ suggestion.level }}">
+              <div class="ss-tip-icon ss-tip-{{ suggestion.level }}" aria-hidden="true">
+                <i class="bi bi-{{ 'calculator' if suggestion.kind else style.icon }}"></i>
+              </div>
+              <div class="flex-grow-1 min-w-0">
+                <span class="ss-tip-chip">{{ "Budget alert" if suggestion.kind else style.label }}</span>
+                <h3 class="ss-tip-title">{{ suggestion.title }}</h3>
+                <p class="ss-tip-message">{{ suggestion.message }}</p>
+
+                {% if suggestion.url %}
+                  <a href="{{ suggestion.url }}" class="ss-tip-link">Open <i class="bi bi-arrow-right"></i></a>
+                {% endif %}
+
+                {% if suggestion.expenses %}
+                  <details class="ss-tip-details">
+                    <summary>
+                      Show {{ suggestion.expenses|length }} related purchase{{ "s" if suggestion.expenses|length != 1 }}
+                    </summary>
+                    <ul class="list-unstyled mb-0">
+                      {% for expense in suggestion.expenses %}
+                        <li>
+                          <span>
+                            {{ expense.date.strftime("%d %b") }} &middot; {{ expense.category_label }}
+                            {% if expense.description %}&middot; <em>&ldquo;{{ expense.description }}&rdquo;</em>{% endif %}
+                          </span>
+                          <span class="fw-semibold text-nowrap">{{ expense.amount|rm }}</span>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </details>
+                {% endif %}
+              </div>
+            </article>
+          {% else %}
+            <div class="ss-tip">
+              <div class="ss-tip-icon ss-tip-positive" aria-hidden="true"><i class="bi bi-check2-circle"></i></div>
+              <div>
+                <h3 class="ss-tip-title">Nothing to flag right now</h3>
+                <p class="ss-tip-message">Keep logging your spending and new tips will appear here.</p>
+              </div>
+            </div>
+          {% endfor %}
+        </section>
+
+        <!-- ... then the detail: one card per expense with a note, quoting it exactly -->
+        <section aria-labelledby="notes-heading">
           <div class="ss-section-head">
             <h2 class="ss-section-title" id="notes-heading">
               <i class="bi bi-chat-quote-fill"></i>From your notes
@@ -181,60 +235,6 @@
                 <em>&ldquo;Bought a gift for my mom&rdquo;</em> or <em>&ldquo;study cafe before exams&rdquo;</em>
                 and SaveSip will quote it here and take it into account.
               </p>
-            </div>
-          {% endfor %}
-        </section>
-
-        <!-- Overall tips for the month -->
-        <section aria-labelledby="tips-heading">
-          <div class="ss-section-head">
-            <h2 class="ss-section-title" id="tips-heading">
-              <i class="bi bi-lightbulb-fill"></i>Your {{ period_word }} at a glance
-            </h2>
-          </div>
-
-          {% for suggestion in suggestions %}
-            {% set style = styles.get(suggestion.level, styles.info) %}
-            <article class="ss-tip ss-tip-{{ suggestion.level }}">
-              <div class="ss-tip-icon ss-tip-{{ suggestion.level }}" aria-hidden="true">
-                <i class="bi bi-{{ 'calculator' if suggestion.kind else style.icon }}"></i>
-              </div>
-              <div class="flex-grow-1 min-w-0">
-                <span class="ss-tip-chip">{{ "Budget alert" if suggestion.kind else style.label }}</span>
-                <h3 class="ss-tip-title">{{ suggestion.title }}</h3>
-                <p class="ss-tip-message">{{ suggestion.message }}</p>
-
-                {% if suggestion.url %}
-                  <a href="{{ suggestion.url }}" class="ss-tip-link">Open <i class="bi bi-arrow-right"></i></a>
-                {% endif %}
-
-                {% if suggestion.expenses %}
-                  <details class="ss-tip-details">
-                    <summary>
-                      Show {{ suggestion.expenses|length }} related purchase{{ "s" if suggestion.expenses|length != 1 }}
-                    </summary>
-                    <ul class="list-unstyled mb-0">
-                      {% for expense in suggestion.expenses %}
-                        <li>
-                          <span>
-                            {{ expense.date.strftime("%d %b") }} &middot; {{ expense.category_label }}
-                            {% if expense.description %}&middot; <em>&ldquo;{{ expense.description }}&rdquo;</em>{% endif %}
-                          </span>
-                          <span class="fw-semibold text-nowrap">{{ expense.amount|rm }}</span>
-                        </li>
-                      {% endfor %}
-                    </ul>
-                  </details>
-                {% endif %}
-              </div>
-            </article>
-          {% else %}
-            <div class="ss-tip">
-              <div class="ss-tip-icon ss-tip-positive" aria-hidden="true"><i class="bi bi-check2-circle"></i></div>
-              <div>
-                <h3 class="ss-tip-title">Nothing to flag right now</h3>
-                <p class="ss-tip-message">Keep logging your spending and new tips will appear here.</p>
-              </div>
             </div>
           {% endfor %}
         </section>

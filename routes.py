@@ -1330,41 +1330,111 @@ MONTHLY_REMINDER_DAYS = 7
 # possessives also count ("buses", "mom's"). When a note matches more than
 # one context, the first one in this order names the card.
 #
-# Each entry: label shown in the interface -> words to look for, and the
-# phrase used in the message ("Since ...").
+# Each entry: label shown in the interface ->
+#   words:     words and phrases to look for
+#   phrase:    used in the message ("Since ...")
+#   response:  what SaveSip says back when one of the words is found
+#   responses: a reply for a specific word, used instead of response, e.g.
+#              "bus" -> public transport, "missed the bus" -> getting home
+#
+# "grab" is deliberately not a Transport word: a Grab ride can be a
+# necessity or a treat, so the user's Essential / Want choice decides.
 CONTEXT_WORDS = {
     "Emergency": {
         "words": ["emergency", "urgent", "broke", "broken", "repair", "replace",
                   "replacement", "sick", "hospital"],
         "phrase": "this was an emergency",
+        "response": "Emergencies happen, and you dealt with it.",
+        "responses": {
+            "broke": "Sorry it broke! Replacing it was the right call.",
+            "broken": "Sorry it broke! Replacing it was the right call.",
+            "replace": "Sorry it broke! Replacing it was the right call.",
+            "replacement": "Sorry it broke! Replacing it was the right call.",
+            "repair": "Repairing it is often cheaper than buying new. Good call.",
+            "sick": "Hope you're feeling better. Your health comes first.",
+            "hospital": "Hope you're feeling better. Your health comes first.",
+            "urgent": "Some costs really can't wait.",
+        },
     },
     "Health": {
         "words": ["medicine", "medical", "clinic", "doctor", "pharmacy"],
         "phrase": "this was for your health",
+        "response": "Hope you're feeling better. Looking after your health is never a waste.",
+        "responses": {},
     },
     "Transport": {
-        "words": ["bus", "grab", "fare", "missed the bus", "shuttle", "taxi", "e-hailing",
+        "words": ["bus", "fare", "missed the bus", "shuttle", "taxi", "e-hailing",
                   "train", "lrt", "mrt", "petrol", "toll", "parking"],
         "phrase": "this was for getting around",
+        "response": "Getting around is a real need.",
+        "responses": {
+            "bus": "Good job taking public transport.",
+            "train": "Good job taking public transport.",
+            "lrt": "Good job taking public transport.",
+            "mrt": "Good job taking public transport.",
+            "shuttle": "Good job using the shuttle, it's one of the cheapest ways to get around.",
+            "fare": "Fares for getting to class are a normal part of student life.",
+            "missed the bus": "It happens! Glad you got home safely.",
+            "taxi": "Sometimes a ride is the safest way to get there.",
+            "e-hailing": "Sometimes a ride is the safest way to get there.",
+            "petrol": "Driving costs add up, so it's good you're keeping track of them.",
+            "toll": "Driving costs add up, so it's good you're keeping track of them.",
+            "parking": "Driving costs add up, so it's good you're keeping track of them.",
+        },
     },
     "Tech/Study": {
         "words": ["laptop", "charger", "printing", "print", "printer", "assignment", "project",
                   "study", "studying", "revision", "class", "lecture", "exam", "library",
                   "textbook", "book", "course", "stationery", "calculator"],
         "phrase": "this was for your studies",
+        "response": "Spending on your studies is money well spent.",
+        "responses": {
+            "laptop": "A working laptop is a must for uni.",
+            "charger": "It's hard to study without a working charger.",
+            "printing": "Printing for class is a real study cost.",
+            "print": "Printing for class is a real study cost.",
+            "printer": "Printing for class is a real study cost.",
+            "assignment": "Good luck with your assignment!",
+            "project": "Good luck with your project!",
+            "exam": "Good luck with your exams!",
+            "revision": "Good luck with your revision!",
+            "library": "Studying at the library is a great habit.",
+        },
     },
     "Planned gift": {
         "words": ["gift", "present", "hadiah", "mom", "mum", "mother", "dad", "father",
                   "parents", "family"],
         "phrase": "this was a planned gift",
+        "response": "What a thoughtful gift!",
+        "responses": {
+            "mom": "What a thoughtful thing to do for your mom!",
+            "mum": "What a thoughtful thing to do for your mum!",
+            "mother": "What a thoughtful thing to do for your mother!",
+            "dad": "What a thoughtful thing to do for your dad!",
+            "father": "What a thoughtful thing to do for your father!",
+            "parents": "What a thoughtful thing to do for your parents!",
+            "family": "Spending on your family is time well spent.",
+        },
     },
     "Work": {
         "words": ["work", "interview", "internship"],
         "phrase": "this was for work",
+        "response": "Spending to build your career is a smart move.",
+        "responses": {
+            "interview": "Good luck with your interview!",
+            "internship": "Good luck with your internship!",
+        },
     },
     "Clear purpose": {
         "words": ["cafe", "café", "birthday", "planned", "needed", "required"],
         "phrase": "you had a clear reason",
+        "response": "You knew exactly why you were buying it.",
+        "responses": {
+            "cafe": "A café can be a great place to focus.",
+            "café": "A café can be a great place to focus.",
+            "birthday": "Birthdays are worth celebrating!",
+            "planned": "Planning ahead is a great habit.",
+        },
     },
 }
 
@@ -1393,10 +1463,11 @@ _CONTEXT_TERMS = {
     _normalise_note(word): word for entry in CONTEXT_WORDS.values() for word in entry["words"]
 }
 
-# The context found in a note: label and phrase of the main context (the
-# first in CONTEXT_WORDS order) and every context word found, in the order
-# they appear in the note (e.g. ["missed the bus", "grab"])
-NoteContext = namedtuple("NoteContext", "label phrase words")
+# The context found in a note: label, phrase and response of the main
+# context (the first in CONTEXT_WORDS order; the response matches the word
+# found, e.g. "missed the bus") and every context word found, in the order
+# they appear in the note (e.g. ["missed the bus", "taxi"])
+NoteContext = namedtuple("NoteContext", "label phrase response words")
 
 
 def note_reason(expense):
@@ -1404,18 +1475,21 @@ def note_reason(expense):
     if not expense.description:
         return None
     note = _normalise_note(expense.description)
-    found = []  # (position in the note, label, phrase, word as written)
+    found = []  # (position in the note, label, phrase, word as written, base word)
     for label, pattern, phrase in _CONTEXT_PATTERNS:
         for match in pattern.finditer(note):
             term = match.group(1)
+            base = _CONTEXT_TERMS[term]
             # Keep a plural or possessive ending, e.g. "buses", "mom's"
-            word = _CONTEXT_TERMS[term] + match.group(0)[len(term):]
-            found.append((match.start(), label, phrase, word))
+            found.append((match.start(), label, phrase, base + match.group(0)[len(term):], base))
     if not found:
         return None
-    _, label, phrase, _ = found[0]  # contexts were searched in priority order
-    words = list(dict.fromkeys(word for _, _, _, word in sorted(found)))
-    return NoteContext(label, phrase, words)
+    # Contexts were searched in priority order, so found[0] is the main
+    # context and the first of its words in the note
+    _, label, phrase, _, base = found[0]
+    entry = CONTEXT_WORDS[label]
+    words = list(dict.fromkeys(item[3] for item in sorted(found)))
+    return NoteContext(label, phrase, entry["responses"].get(base, entry["response"]), words)
 
 
 def _suggestion(level, title, message, expenses=None, notify=False, url=None, kind=None):
@@ -1431,13 +1505,86 @@ def _suggestion(level, title, message, expenses=None, notify=False, url=None, ki
             "expenses": expenses or [], "notify": notify, "url": url, "kind": kind}
 
 
-def _spent_on(expense):
-    """What an expense was spent "on", for the start of a note card: the
-    platform that influenced a want or unplanned cost, otherwise the category."""
-    if expense.is_social_media_influenced and expense.expense_type != "Essential":
-        platform = expense.social_media_influence
-        return "social media" if platform == "Other" else platform
-    return "miscellaneous items" if expense.category == "Other" else expense.category
+# How each category is talked about in a suggestion, so the advice fits
+# what the money went on: the name used in a sentence ("You spent RM10.00
+# on food"), the title of a card about wants in that category, and a tip.
+CATEGORY_TEXT = {
+    "Food": {
+        "noun": "food",
+        "want_title": "Eating out is adding up",
+        "tip": "Cooking or packing a meal a few times a week is one of the easiest ways to save.",
+    },
+    "Groceries": {
+        "noun": "groceries",
+        "want_title": "Extra grocery treats",
+        "tip": "Writing a shopping list before you go helps you buy only what you need.",
+    },
+    "Transport": {
+        "noun": "transport",
+        "want_title": "Rides you could plan ahead",
+        "tip": "Buses, trains and the campus shuttle are much cheaper than a ride for most trips.",
+    },
+    "Shopping": {
+        "noun": "shopping",
+        "want_title": "Shopping you didn't plan",
+        "tip": "Try waiting 24 hours before buying clothes or gadgets. Most urges pass.",
+    },
+    "Fees": {
+        "noun": "fees",
+        "want_title": "Optional fees",
+        "tip": "Add fees you know are coming as Planned Expenses so they never catch you out.",
+    },
+    "Subscriptions": {
+        "noun": "subscriptions",
+        "want_title": "Subscriptions you might not need",
+        "tip": "Check which subscriptions you actually used this month and cancel the rest.",
+    },
+    "Savings": {
+        "noun": "savings",
+        "want_title": "Savings",
+        "tip": "Money you set aside now is a cushion for later. Keep it up.",
+    },
+    "Academic": {
+        "noun": "academic items",
+        "want_title": "Study extras",
+        "tip": "Second-hand textbooks and the library can cut your study costs a lot.",
+    },
+    "Social": {
+        "noun": "going out",
+        "want_title": "Going out is adding up",
+        "tip": "Suggest cheaper plans with friends, like a picnic or a movie night at home.",
+    },
+    "Other": {
+        "noun": "other things",
+        "want_title": "Other wants",
+        "tip": "Before your next want, ask yourself whether you would still buy it in a week.",
+    },
+}
+
+
+def _category_noun(expense):
+    """What an expense was spent on, in a sentence: "food", "transport", or
+    the user's own description of an Other expense (e.g. "Gym membership")."""
+    if expense.category == "Other" and expense.category_other:
+        text = expense.category_other
+        # "Gym membership" -> "gym membership", but "KFC" and "iPhone" stay as typed
+        return text[0].lower() + text[1:] if text[1:2].islower() else text
+    return CATEGORY_TEXT[expense.category]["noun"]
+
+
+def _by_category(expenses):
+    """{category: total} for expenses, largest first."""
+    totals = {}
+    for expense in expenses:
+        totals[expense.category] = totals.get(expense.category, ZERO) + expense.amount
+    return dict(sorted(totals.items(), key=lambda item: item[1], reverse=True))
+
+
+def _category_breakdown(expenses, limit=2):
+    """Where most of the money went, e.g. "food (RM20.00) and shopping (RM15.00)"."""
+    parts = [f"{CATEGORY_TEXT[category]['noun']} (RM{total:,.2f})"
+             for category, total in list(_by_category(expenses).items())[:limit]]
+    return " and ".join(parts)
 
 
 def _note_card(expense, reason):
@@ -1449,47 +1596,51 @@ def _note_card(expense, reason):
     verdict (what SaveSip made of it). message joins them into one sentence.
     """
     note = expense.description.strip()
-    lead = f"We noticed you spent RM{expense.amount:,.2f} on {_spent_on(expense)}."
+    noun = _category_noun(expense)
+    title_noun = noun[0].upper() + noun[1:]
     platform = expense.social_media_influence
+    where = expense.platform_label if platform != "Other" or expense.social_media_other else "social media"
+    lead = f"We noticed you spent RM{expense.amount:,.2f} on {noun}"
+    if expense.is_social_media_influenced and expense.expense_type != "Essential":
+        lead += f" after seeing it on {where}"
+    lead += "."
+    # What SaveSip says back to the specific word in the note, e.g. "bus"
+    response = f"{reason.response} " if reason else ""
 
     if expense.expense_type == "Essential":
         level, label, outcome, flagged = "positive", "Essential", "Never flagged", False
-        title = f"{expense.category}: a need, not a want"
-        verdict = (f"Since {reason[1]} and you marked it as Essential, "
-                   if reason else "You marked it as Essential, so ")
-        verdict += "it counts as a need, not an impulse buy. Well done!"
+        title = f"{title_noun}: a need, not a want"
+        verdict = (response or "Well done! ") + (
+            "You marked it as Essential, so it counts as a need, not an impulse buy.")
         if expense.is_social_media_influenced:
-            verdict += f" The {PLATFORM_NAMES.get(platform, platform)} influence is ignored for essentials."
+            verdict += f" Seeing it on {where} doesn't matter for essentials."
     elif expense.expense_type == "Situational":
         level, label, outcome, flagged = "info", "Unplanned", "Never flagged", False
-        title = f"Unplanned {expense.category} cost"
-        if reason:
-            verdict = (f"Since {reason[1]}, this is exactly the kind of surprise a small "
-                       f"Savings cushion is for. Unplanned costs are never counted as impulse buys.")
-        else:
-            verdict = ("You marked it as Unplanned, so it isn't counted as an impulse buy. "
-                       "Putting a little into Savings each month helps with the next surprise.")
+        title = f"{title_noun}: an unplanned cost"
+        verdict = (response or "Surprises happen. ") + (
+            "Unplanned costs are never counted as impulse buys. "
+            "Putting a little into Savings each month helps with the next one.")
     elif reason:
-        level, label, outcome, flagged = "context", reason[0], "Not an impulse buy", False
-        title = f"{reason[0]}: not an impulse buy"
-        verdict = f"Since {reason[1]}, we won't flag it as an impulse buy!"
+        level, label, outcome, flagged = "context", reason.label, "Not an impulse buy", False
+        title = f"{reason.label}: not an impulse buy"
+        verdict = f"{response}Since {reason.phrase}, we won't flag it as an impulse buy."
     else:
         level, label, outcome, flagged = "warning", "No clear reason", "Counted as an impulse buy", True
         if expense.is_social_media_influenced:
-            where = "social media" if platform == "Other" else platform
-            title = f"{where[0].upper() + where[1:]} purchase counted as an impulse buy"
+            title = f"{title_noun} from {where}: counted as an impulse buy"
             counted = f"it counts toward your {where} impulse buys"
         else:
-            title = "Counted as a want"
+            title = f"{title_noun}: counted as a want"
             counted = "it counts as a want"
         verdict = (f"We couldn't find a reason such as a gift, your studies or an emergency "
-                   f"in it, so {counted}. If it was planned, edit the note to say why.")
+                   f"in your note, so {counted}. {CATEGORY_TEXT[expense.category]['tip']} "
+                   f"If it was planned, edit the note to say why.")
 
     after_quote = "" if note[-1] in ".!?" else "."
     card = _suggestion(level, title, f"{lead} Your note says “{note}”{after_quote} {verdict}", [expense])
     card.update({"expense": expense, "lead": lead, "note": note, "verdict": verdict,
                  "label": label, "outcome": outcome, "flagged": flagged,
-                 # Context words spotted in the note, e.g. ["missed the bus", "grab"]
+                 # Context words spotted in the note, e.g. ["missed the bus", "taxi"]
                  "context_words": reason.words if reason else []})
     return card
 
@@ -1539,7 +1690,7 @@ def build_suggestions(year, month, custom_range=None):
     show_social = current_user.notify_social
     show_budget = current_user.notify_budget
 
-    needs, unplanned, other_wants = [], [], []
+    needs, unplanned, other_wants = [], [], []  # other_wants: not from social media
     impulse_by_platform = {platform: [] for platform in SOCIAL_MEDIA_PLATFORMS}
     note_cards = []
 
@@ -1567,17 +1718,11 @@ def build_suggestions(year, month, custom_range=None):
 
     if needs:
         needs_total = sum_amounts(needs)
-        by_category = {}
-        for expense in needs:
-            by_category[expense.category] = (
-                by_category.get(expense.category, ZERO) + expense.amount
-            )
-        top_categories = sorted(by_category, key=by_category.get, reverse=True)[:3]
         items.append(_suggestion(
             "positive",
             "Great job prioritising your essentials",
             f"You spent RM{needs_total:,.2f} on {plural(len(needs), 'essential')} "
-            f"{when}, mainly on {', '.join(top_categories)}. "
+            f"{when}, mainly on {_category_breakdown(needs, limit=3)}. "
             f"That is {share_of(needs_total, total_spent)}% of your spending going "
             f"to things you actually need. Keep it up!",
             needs,
@@ -1594,22 +1739,24 @@ def build_suggestions(year, month, custom_range=None):
                 f"Watch out for {name} impulse buying",
                 f"You bought {plural(len(platform_expenses), 'want')} "
                 f"influenced by {name} {when}, totalling RM{platform_total:,.2f} "
-                f"({share_of(platform_total, total_spent)}% of your spending). "
-                f"{PLATFORM_TIPS[platform]}",
+                f"({share_of(platform_total, total_spent)}% of your spending), mostly "
+                f"{_category_breakdown(platform_expenses)}. {PLATFORM_TIPS[platform]}",
                 platform_expenses,
                 notify=True,
             ))
 
-    if other_wants:
-        other_total = sum_amounts(other_wants)
+    # Wants with no reason and no social media influence: one card per
+    # category, so the advice fits what the money went on
+    for category, category_total in _by_category(other_wants).items():
+        category_wants = [expense for expense in other_wants if expense.category == category]
+        text = CATEGORY_TEXT[category]
         items.append(_suggestion(
             "warning",
-            "Think twice before buying wants",
-            f"You spent RM{other_total:,.2f} on "
-            f"{plural(len(other_wants), 'other want')} {when}. "
-            f"Social media is not the only trigger for impulse buying. Before your next "
-            f"want, ask yourself whether you would still buy it in a week.",
-            other_wants,
+            text["want_title"],
+            f"You spent RM{category_total:,.2f} on {text['noun']} "
+            f"({plural(len(category_wants), 'want')}) {when}, with no reason in your notes. "
+            f"That is {share_of(category_total, total_spent)}% of your spending. {text['tip']}",
+            category_wants,
             notify=True,
         ))
 
@@ -1620,7 +1767,8 @@ def build_suggestions(year, month, custom_range=None):
             f"Unplanned costs {when}",
             f"You had {plural(len(unplanned), 'unplanned expense')} totalling "
             f"RM{unplanned_total:,.2f} ({share_of(unplanned_total, total_spent)}% of your "
-            f"spending). Surprises happen. Putting a little into Savings each month "
+            f"spending), mostly {_category_breakdown(unplanned)}. Surprises happen. "
+            f"Putting a little into Savings each month "
             f"gives you a cushion for the next one.",
             unplanned,
         ))
@@ -1638,14 +1786,15 @@ def build_suggestions(year, month, custom_range=None):
         statuses = (budget_status_for_range(custom_range[0], custom_range[1], spent_by_category)
                     if custom_range else budget_status(year, month, spent_by_category))
         for status in statuses:
+            noun = CATEGORY_TEXT[status["category"]]["noun"]
+            tip = CATEGORY_TEXT[status["category"]]["tip"]
             if status["over"]:
                 items.append(_suggestion(
                     "warning",
                     f"{status['category']} budget exceeded",
                     f"You have spent RM{status['spent']:,.2f} of your "
                     f"RM{status['budget']:,.2f} {status['category']} budget "
-                    f"({status['percent']}%). Try to hold off on {status['category']} "
-                    f"spending for {rest_of}.",
+                    f"({status['percent']}%). Try to hold off on {noun} for {rest_of}. {tip}",
                     notify=True,
                     kind="budget_over",
                 ))
@@ -1655,7 +1804,7 @@ def build_suggestions(year, month, custom_range=None):
                     f"{status['category']} budget {status['percent']}% used",
                     f"You have used {status['percent']}% of your {status['category']} "
                     f"budget, with RM{status['remaining']:,.2f} left for {rest_of}. "
-                    f"Slow down on {status['category']} so you don't go over.",
+                    f"Slow down on {noun} so you don't go over. {tip}",
                     notify=True,
                     kind="budget_near",
                 ))
